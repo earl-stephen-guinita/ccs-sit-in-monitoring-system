@@ -683,3 +683,4 @@ html, body {
 .admin-card .input-group-text { background: #f0e6ff; border-color: #d4b5ff; color: #4a1d7e; }
 .admin-card .form-control, .admin-card .form-select { border-color: #d4b5ff; }
 .admin-card .form-control:focus, .admin-card .form-select:focus { border-color: #7c3aed; box-shadow: 0 0 0 0.2rem rgba(124,58,237,0.18); }
+

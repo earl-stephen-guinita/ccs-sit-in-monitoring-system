@@ -102,6 +102,13 @@ function showPage(pageKey) {
     document.title = PAGE_TITLES[pageKey] || 'CCS Sit-In Monitoring';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (pageKey === 'profile') loadProfile();
+
+    if (pageKey !== 'profile') {
+      const editMode = document.getElementById('profileEditMode');
+      if (editMode && editMode.style.display !== 'none') {
+        toggleEditMode(false);
+      }
+    }    
   }
 }
 
@@ -215,6 +222,7 @@ document.addEventListener('submit', function (e) {
       email:      document.getElementById('eEmail').value.trim(),
       address:    document.getElementById('eAddress').value.trim(),
       password:   document.getElementById('ePassword').value,
+      photo:      currentUser.photo || null,
     };
 
     authFetch('/api/profile/update', {
@@ -227,6 +235,9 @@ document.addEventListener('submit', function (e) {
           currentUser = { ...currentUser, ...updated };
           saveSession(getToken(), currentUser);
           updateNavForLoggedIn();
+
+          document.getElementById('editProfileForm').dataset.originalPhoto = currentUser.photo || '';
+
           loadProfile();
           toggleEditMode(false);
           alert('Profile updated successfully!');
@@ -361,11 +372,21 @@ function adminLogout() {
   showPage('home');
 }
 
-/* ── restore session on page load ── */
 window.addEventListener('DOMContentLoaded', function () {
   if (currentUser && getToken()) updateNavForLoggedIn();
-  if (localStorage.getItem('ccs_admin_token')) {
-    document.getElementById('navAdminLogin').style.display = 'none';
+  
+  const adminToken = localStorage.getItem('ccs_admin_token');
+  if (adminToken) {
+    try {
+      const payload = JSON.parse(atob(adminToken.split('.')[1]));
+      if (payload.exp * 1000 > Date.now()) {
+        document.getElementById('navAdminLogin').style.display = 'none';
+      } else {
+        localStorage.removeItem('ccs_admin_token');
+      }
+    } catch {
+      localStorage.removeItem('ccs_admin_token');
+    }
   }
 
   const photoInput = document.getElementById('photoUpload');
@@ -381,7 +402,6 @@ window.addEventListener('DOMContentLoaded', function () {
         document.getElementById('profileAvatarInitials').style.display = 'none';
         if (currentUser) {
           currentUser.photo = ev.target.result;
-          saveSession(getToken(), currentUser);
         }
       };
       reader.readAsDataURL(file);
@@ -473,7 +493,7 @@ function loadProfile() {
       (currentUser.firstName[0] + currentUser.lastName[0]).toUpperCase();
   }
 
-  const total     = 30;
+  const total     = 28;
   const remaining = currentUser.sessions !== undefined ? currentUser.sessions : 30;
   document.getElementById('sessionCount').textContent = remaining + ' / ' + total;
   const dotsEl = document.getElementById('sessionDots');
@@ -498,7 +518,9 @@ function loadProfile() {
 function toggleEditMode(on) {
   document.getElementById('profileViewMode').style.display = on ? 'none' : '';
   document.getElementById('profileEditMode').style.display = on ? '' : 'none';
+  document.getElementById('photoEditLabel').style.display = on ? '' : 'none';
   if (on && currentUser) {
+    document.getElementById('editProfileForm').dataset.originalPhoto = currentUser.photo || '';
     document.getElementById('eIdNumber').value   = currentUser.idNumber;
     document.getElementById('eLastName').value   = currentUser.lastName;
     document.getElementById('eFirstName').value  = currentUser.firstName;
@@ -508,5 +530,23 @@ function toggleEditMode(on) {
     document.getElementById('eEmail').value      = currentUser.email;
     document.getElementById('eAddress').value    = currentUser.address;
     document.getElementById('ePassword').value   = '';
+  } else {
+    // ← restore original photo if cancelled
+    const originalPhoto = document.getElementById('editProfileForm').dataset.originalPhoto;
+    if (originalPhoto !== undefined && currentUser) {
+      currentUser.photo = originalPhoto || null;
+      saveSession(getToken(), currentUser);
+      const img = document.getElementById('profilePhotoImg');
+      const initials = document.getElementById('profileAvatarInitials');
+      if (originalPhoto) {
+        img.src = originalPhoto;
+        img.style.display = 'block';
+        initials.style.display = 'none';
+      } else {
+        img.style.display = 'none';
+        initials.style.display = '';
+        initials.textContent = (currentUser.firstName[0] + currentUser.lastName[0]).toUpperCase();
+      }
+    }
   }
 }

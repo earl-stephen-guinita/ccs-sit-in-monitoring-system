@@ -22,7 +22,7 @@ db.exec(`
     email       TEXT NOT NULL,
     address     TEXT NOT NULL,
     password    TEXT NOT NULL,
-    sessions    INTEGER DEFAULT 30
+    sessions    INTEGER DEFAULT 28
   )
 `);
 
@@ -50,6 +50,10 @@ db.exec(`
 try { db.exec(`ALTER TABLE students ADD COLUMN sessions INTEGER DEFAULT 30`); }
 catch (e) {}
 
+// add photo column if upgrading from older database
+try { db.exec(`ALTER TABLE students ADD COLUMN photo TEXT`); }
+catch (e) {}
+
 // create default admin if none exists
 (async () => {
   const existing = db.prepare('SELECT id FROM admins WHERE username = ?').get('admin');
@@ -61,7 +65,8 @@ catch (e) {}
 })();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── JWT middleware for students ──
@@ -102,7 +107,7 @@ app.post('/api/register', async (req, res) => {
   db.prepare(`
     INSERT INTO students
       (id_number, last_name, first_name, middle_name, course, year_level, email, address, password, sessions)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 30)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 28)
   `).run(idNumber, lastName, firstName, middleName, course, level, email, address, hashed);
 
   res.json({ success: true });
@@ -125,6 +130,7 @@ app.post('/api/login', async (req, res) => {
       lastName: user.last_name, middleName: user.middle_name,
       course: user.course, level: user.year_level,
       email: user.email, address: user.address, sessions: user.sessions,
+      photo: user.photo || null,
     }
   });
 });
@@ -140,13 +146,14 @@ app.get('/api/profile', authMiddleware, (req, res) => {
       lastName: user.last_name, middleName: user.middle_name,
       course: user.course, level: user.year_level,
       email: user.email, address: user.address, sessions: user.sessions,
+      photo: user.photo || null,
     }
   });
 });
 
 // ── UPDATE PROFILE (protected) ──
 app.post('/api/profile/update', authMiddleware, async (req, res) => {
-  const { firstName, lastName, middleName, course, level, email, address, password } = req.body;
+  const { firstName, lastName, middleName, course, level, email, address, password, photo } = req.body;
   const idNumber = req.user.idNumber;
   const existing = db.prepare('SELECT id FROM students WHERE id_number = ?').get(idNumber);
   if (!existing) return res.json({ success: false, message: 'User not found.' });
@@ -154,12 +161,12 @@ app.post('/api/profile/update', authMiddleware, async (req, res) => {
   if (password && password.trim() !== '') {
     const hashed = await bcrypt.hash(password, 10);
     db.prepare(`UPDATE students SET last_name=?, first_name=?, middle_name=?,
-      course=?, year_level=?, email=?, address=?, password=? WHERE id_number=?`)
-      .run(lastName, firstName, middleName, course, level, email, address, hashed, idNumber);
+      course=?, year_level=?, email=?, address=?, password=?, photo=? WHERE id_number=?`)
+      .run(lastName, firstName, middleName, course, level, email, address, hashed, photo || null, idNumber);
   } else {
     db.prepare(`UPDATE students SET last_name=?, first_name=?, middle_name=?,
-      course=?, year_level=?, email=?, address=? WHERE id_number=?`)
-      .run(lastName, firstName, middleName, course, level, email, address, idNumber);
+      course=?, year_level=?, email=?, address=?, photo=? WHERE id_number=?`)
+      .run(lastName, firstName, middleName, course, level, email, address, photo || null, idNumber);
   }
   res.json({ success: true });
 });

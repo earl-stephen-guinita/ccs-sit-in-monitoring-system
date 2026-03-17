@@ -24,19 +24,28 @@
     <!-- navigation bar -->
     <header class="ccs-header sticky-top">
 
-      <!-- logos and title -->
-      <div class="ccs-header-top">
-        <div class="d-flex align-items-center justify-content-center gap-3 py-2">
+    <div class="ccs-header-top">
+      <div class="d-flex align-items-center justify-content-between px-3 py-2">
+
+        <!-- logos and title -->
+        <div class="d-flex align-items-center gap-3">
           <img src="uclogo.png" alt="UC Logo"
-               style="height:48px !important; width:auto !important; object-fit:contain !important;" />
+              style="height:48px !important; width:auto !important; object-fit:contain !important;" />
           <img src="ucmainccslogo.png" alt="CCS Logo" class="rounded-circle"
-               style="height:60px !important; width:auto !important; object-fit:contain !important;" />
+              style="height:60px !important; width:auto !important; object-fit:contain !important;" />
           <div class="nav-title-text">
             <span class="nav-title-main">College of Computer Studies</span>
             <span class="nav-title-sub">Sit-In Monitoring System</span>
           </div>
         </div>
+
+        <!-- admin top right -->
+        <a class="nav-link nav-pill" href="#" onclick="showPage('admin-login'); return false;" id="navAdminLogin">
+          <i class="bi bi-shield-lock me-1"></i>Admin
+        </a>
+
       </div>
+    </div>
 
       <!-- links -->
       <nav class="ccs-navbar-bottom navbar navbar-expand-lg p-0">
@@ -64,19 +73,14 @@
               <li class="nav-item">
                 <a class="nav-link nav-pill" id="navLogin" href="#" onclick="showPage('login'); return false;">Login</a>
               </li>
-              <li class="nav-item" id="navLogoutItem" style="display:none;">
-                <a class="nav-link nav-pill" href="#" onclick="logoutUser(); return false;">Logout</a>
-              </li>
               <li class="nav-item" id="navProfileItem" style="display:none;">
                 <a class="nav-link nav-pill" href="#" onclick="showPage('profile'); return false;">
                   <i class="bi bi-person-circle me-1"></i><span id="navProfileName">Profile</span>
                 </a>
+              </li>      
+              <li class="nav-item" id="navLogoutItem" style="display:none;">
+                <a class="nav-link nav-pill" href="#" onclick="logoutUser(); return false;">Logout</a>
               </li>              
-              <li class="nav-item">
-                <a class="nav-link nav-pill" href="#" onclick="showPage('admin-login'); return false;" id="navAdminLogin">
-                  <i class="bi bi-shield-lock me-1"></i>Admin
-                </a>
-              </li>         
             </ul>
           </div>
         </div>
@@ -368,7 +372,7 @@
                   <img id="profilePhotoImg" src="" alt="Profile Photo" style="display:none;" />
                   <span id="profileAvatarInitials"></span>
                 </div>
-                <label class="profile-avatar-edit" for="photoUpload" title="Change photo">
+                <label class="profile-avatar-edit" for="photoUpload" title="Change photo" id="photoEditLabel" style="display:none;">
                   <i class="bi bi-camera-fill"></i>
                 </label>
                 <input type="file" id="photoUpload" accept="image/*" style="display:none;" />
