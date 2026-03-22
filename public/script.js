@@ -91,6 +91,7 @@ const PAGE_TITLES = {
   profile:      'CCS | Profile',
   admin:        'CCS | Admin Panel',
   history:      'CCS | History',
+  sitin:        'CCS | Current Sit-In',
 };
 
 /* ── page switcher ── */
@@ -104,6 +105,7 @@ function showPage(pageKey) {
     if (pageKey === 'profile') loadProfile();
     if (pageKey === 'admin') loadAdminAnnouncements();
     if (pageKey === 'history') loadHistory();
+    if (pageKey === 'sitin') loadSitin();
 
     if (pageKey !== 'profile') {
       const editMode = document.getElementById('profileEditMode');
@@ -216,6 +218,15 @@ document.addEventListener('submit', function (e) {
         if (result.success) {
           if (result.isAdmin) {
             localStorage.setItem('ccs_admin_token', result.token);
+            document.getElementById('navHome').style.display = 'none';
+            document.getElementById('navCommunity').style.display = 'none';
+            document.getElementById('navAbout').style.display = 'none';
+            document.getElementById('navRegisterItem').style.display = 'none';
+            document.getElementById('navLogin').style.display = 'none';
+            document.getElementById('navAdminPanel').style.display = '';
+            document.getElementById('navAdminSitin').style.display = '';
+            document.getElementById('navAdminLogout').style.display = '';
+            setAdminNav('admin');
             showPage('admin');
           } else {
             currentUser = result.user;
@@ -362,10 +373,11 @@ document.addEventListener('submit', function (e) {
   }
 });
 
-/* ── nav update after login ── */
 function updateNavForLoggedIn() {
   document.getElementById('navLogin').style.display = 'none';
   document.getElementById('navRegisterItem').style.display = 'none';
+  document.getElementById('navCommunity').style.display = 'none';
+  document.getElementById('navAbout').style.display = 'none';
   document.getElementById('navProfileItem').style.display = '';
   document.getElementById('navLogoutItem').style.display = '';
   document.getElementById('navProfileName').textContent = currentUser.firstName;
@@ -380,6 +392,8 @@ function logoutUser() {
       clearSession();
       document.getElementById('navLogin').style.display = '';
       document.getElementById('navRegisterItem').style.display = '';
+      document.getElementById('navCommunity').style.display = '';
+      document.getElementById('navAbout').style.display = '';
       document.getElementById('navProfileItem').style.display = 'none';
       document.getElementById('navLogoutItem').style.display = 'none';
       document.getElementById('heroSection').style.display = '';
@@ -392,11 +406,33 @@ function logoutUser() {
 /* ── admin logout ── */
 function adminLogout() {
   localStorage.removeItem('ccs_admin_token');
+  document.getElementById('navHome').style.display = '';
+  document.getElementById('navAdminPanel').style.display = 'none';
+  document.getElementById('navAdminSitin').style.display = 'none';
+  document.getElementById('navAdminLogout').style.display = 'none';
+  document.getElementById('navCommunity').style.display = '';
+  document.getElementById('navAbout').style.display = '';
+  document.getElementById('navRegisterItem').style.display = '';
+  document.getElementById('navLogin').style.display = '';
   clearSitInForm();
   showPage('home');
 }
 
 window.addEventListener('DOMContentLoaded', function () {
+  const adminToken = localStorage.getItem('ccs_admin_token');
+  if (adminToken) {
+    document.getElementById('navHome').style.display = 'none';
+    document.getElementById('navCommunity').style.display = 'none';
+    document.getElementById('navAbout').style.display = 'none';
+    document.getElementById('navRegisterItem').style.display = 'none';
+    document.getElementById('navLogin').style.display = 'none';
+    document.getElementById('navAdminPanel').style.display = '';
+    document.getElementById('navAdminSitin').style.display = '';
+    document.getElementById('navAdminLogout').style.display = '';
+    setAdminNav('admin');
+    showPage('admin');
+  }  
+
   if (currentUser && getToken()) {
     updateNavForLoggedIn();
     document.getElementById('heroSection').style.display = 'none';
@@ -877,6 +913,194 @@ function submitFeedback() {
         loadHistory();
       } else {
         alert(result.message || 'Failed to submit feedback.');
+      }
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+
+/* ── admin sit-in state ── */
+let sitinData = [];
+let sitinSortKey = 'id';
+let sitinSortDir = 'desc';
+let sitinPage = 1;
+let sitinFilter = 'all';
+
+/* ── set admin nav active ── */
+function setAdminNav(page) {
+  document.getElementById('navAdminPanel').classList.toggle('active', page === 'admin');
+  document.getElementById('navAdminSitin').classList.toggle('active', page === 'sitin');
+}
+
+/* ── set sitin filter ── */
+function setSitinFilter(filter) {
+  sitinFilter = filter;
+  sitinPage = 1;
+  document.getElementById('filterAll').classList.toggle('active', filter === 'all');
+  document.getElementById('filterActive').classList.toggle('active', filter === 'active');
+  document.getElementById('filterDone').classList.toggle('active', filter === 'done');
+  renderSitinTable();
+}
+
+/* ── load sitin ── */
+function loadSitin() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/sitin', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      sitinData = result.logs || [];
+      sitinPage = 1;
+      renderSitinTable();
+    })
+    .catch(() => {});
+}
+
+/* ── sort sitin ── */
+function sortSitin(key) {
+  if (sitinSortKey === key) {
+    sitinSortDir = sitinSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sitinSortKey = key;
+    sitinSortDir = 'asc';
+  }
+  sitinPage = 1;
+  renderSitinTable();
+}
+
+/* ── render sitin table ── */
+function renderSitinTable() {
+  const pageSize = parseInt(document.getElementById('sitinPageSize').value);
+  const search   = document.getElementById('sitinSearch').value.toLowerCase();
+
+  // filter by status
+  let filtered = sitinData.filter(r => {
+    const isActive = !r.logout_time;
+    if (sitinFilter === 'active' && !isActive) return false;
+    if (sitinFilter === 'done' && isActive) return false;
+
+    const name = r.first_name + ' ' + r.last_name;
+    return (
+      String(r.id).toLowerCase().includes(search) ||
+      r.id_number.toLowerCase().includes(search) ||
+      name.toLowerCase().includes(search) ||
+      r.purpose.toLowerCase().includes(search) ||
+      r.lab.toLowerCase().includes(search)
+    );
+  });
+
+  // sort
+  filtered.sort((a, b) => {
+    let valA, valB;
+    if (sitinSortKey === 'name') {
+      valA = a.first_name + ' ' + a.last_name;
+      valB = b.first_name + ' ' + b.last_name;
+    } else if (sitinSortKey === 'status') {
+      valA = a.logout_time ? 'done' : 'active';
+      valB = b.logout_time ? 'done' : 'active';
+    } else {
+      valA = a[sitinSortKey] !== undefined ? String(a[sitinSortKey]) : '';
+      valB = b[sitinSortKey] !== undefined ? String(b[sitinSortKey]) : '';
+    }
+    if (valA < valB) return sitinSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return sitinSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // paginate
+  const total  = filtered.length;
+  const pages  = Math.max(1, Math.ceil(total / pageSize));
+  if (sitinPage > pages) sitinPage = pages;
+  const start  = (sitinPage - 1) * pageSize;
+  const end    = Math.min(start + pageSize, total);
+  const paged  = filtered.slice(start, end);
+
+  // sort icons
+  document.querySelectorAll('#sitinTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#sitinTable th');
+  const keys = ['id', 'id_number', 'name', 'purpose', 'lab', 'sessions', 'status'];
+  keys.forEach((k, i) => {
+    if (k === sitinSortKey) ths[i].querySelector('.sort-btns').classList.add('active');
+  });
+
+  // render rows
+  const tbody = document.getElementById('sitinTableBody');
+  if (paged.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No records found.</td></tr>';
+  } else {
+    tbody.innerHTML = paged.map(r => {
+      const isActive = !r.logout_time;
+      return `
+        <tr>
+          <td>${r.id}</td>
+          <td>${r.id_number}</td>
+          <td>${r.first_name} ${r.last_name}</td>
+          <td>${r.purpose}</td>
+          <td>${r.lab}</td>
+          <td>${r.sessions !== null && r.sessions !== undefined ? r.sessions : '—'}</td>
+          <td>
+            <span class="sitin-status ${isActive ? 'active' : 'done'}">
+              ${isActive ? 'Active' : 'Done'}
+            </span>
+          </td>
+          <td>
+            ${isActive ? `
+              <button class="btn-logout-sitin" onclick="adminLogoutSitin(${r.id})">
+                <i class="bi bi-box-arrow-right me-1"></i>Logout
+              </button>
+            ` : '—'}
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // info
+  document.getElementById('sitinInfo').textContent =
+    total === 0 ? 'Showing 0 to 0 of 0 entries'
+    : `Showing ${start + 1} to ${end} of ${total} entries`;
+
+  // pagination
+  const pag = document.getElementById('sitinPagination');
+  pag.innerHTML = '';
+  const mkBtn = (label, page, disabled, active) => {
+    const btn = document.createElement('button');
+    btn.className = 'page-btn' + (active ? ' active' : '');
+    btn.innerHTML = label;
+    btn.disabled = disabled;
+    btn.onclick = () => { sitinPage = page; renderSitinTable(); };
+    pag.appendChild(btn);
+  };
+  mkBtn('&laquo;', 1, sitinPage === 1, false);
+  mkBtn('&lsaquo;', sitinPage - 1, sitinPage === 1, false);
+  for (let i = 1; i <= pages; i++) {
+    if (pages <= 5 || Math.abs(i - sitinPage) <= 1 || i === 1 || i === pages) {
+      mkBtn(i, i, false, i === sitinPage);
+    } else if (Math.abs(i - sitinPage) === 2) {
+      const dots = document.createElement('span');
+      dots.textContent = '…';
+      dots.style.cssText = 'padding:0.25rem 0.4rem; color:#aaa; font-size:0.82rem;';
+      pag.appendChild(dots);
+    }
+  }
+  mkBtn('&rsaquo;', sitinPage + 1, sitinPage === pages, false);
+  mkBtn('&raquo;', pages, sitinPage === pages, false);
+}
+
+/* ── admin logout student from sit-in ── */
+function adminLogoutSitin(id) {
+  if (!confirm('Log out this student? This will deduct 1 session.')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/sitin-logout/' + id, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        loadSitin();
+      } else {
+        alert(result.message || 'Failed to logout student.');
       }
     })
     .catch(() => alert('Could not reach the server.'));

@@ -881,6 +881,7 @@ html, body {
 
 /* ---------- history page ---------- */
 #page-history.active { display: flex !important; flex-direction: column; min-height: 100vh; }
+#page-sitin.active { display: flex !important; flex-direction: column; min-height: 100vh; }
 
 .history-page-wrapper {
   flex: 1;
@@ -1034,3 +1035,63 @@ html, body {
   .history-controls { flex-direction: column; align-items: flex-start; }
   .history-footer { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---------- sitin filter ---------- */
+.sitin-filter-btns {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.sitin-filter-btn {
+  background: #f0e6ff;
+  color: #4a1d7e;
+  border: 1px solid #d4b5ff;
+  border-radius: 6px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sitin-filter-btn:hover { background: #e0ccff; }
+
+.sitin-filter-btn.active {
+  background: linear-gradient(135deg, #4a1d7e, #7c3aed);
+  color: #fff;
+  border-color: #4a1d7e;
+}
+
+/* sitin status badge */
+.sitin-status {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.sitin-status.active {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.sitin-status.done {
+  background: #e2d4ff;
+  color: #4a1d7e;
+}
+
+/* sitin logout button */
+.btn-logout-sitin {
+  background: #fff0f0;
+  color: #dc3545;
+  border: 1px solid #ffc5c5;
+  border-radius: 6px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-logout-sitin:hover { background: #ffd6d6; }

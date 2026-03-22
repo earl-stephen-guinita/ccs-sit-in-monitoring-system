@@ -194,20 +194,25 @@ app.post('/api/logout', authMiddleware, (req, res) => {
   const user = db.prepare('SELECT * FROM students WHERE id_number = ?').get(req.user.idNumber);
   if (!user) return res.json({ success: false });
 
-  const newSessions = Math.max(0, user.sessions - 1);
-  db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?')
-    .run(newSessions, req.user.idNumber);
+  // only deduct session if student has an active sit-in
+  const activeSitIn = db.prepare(`
+    SELECT id FROM sit_in_logs
+    WHERE id_number = ? AND logout_time IS NULL
+    ORDER BY login_time DESC LIMIT 1
+  `).get(req.user.idNumber);
 
-  db.prepare(`
-    UPDATE sit_in_logs SET logout_time = datetime('now','localtime')
-    WHERE id = (
-      SELECT id FROM sit_in_logs
-      WHERE id_number = ? AND logout_time IS NULL
-      ORDER BY login_time DESC LIMIT 1
-    )
-  `).run(req.user.idNumber);
+  if (activeSitIn) {
+    const newSessions = Math.max(0, user.sessions - 1);
+    db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?')
+      .run(newSessions, req.user.idNumber);
 
-  res.json({ success: true, remainingSessions: newSessions });
+    db.prepare(`
+      UPDATE sit_in_logs SET logout_time = datetime('now','localtime')
+      WHERE id = ?
+    `).run(activeSitIn.id);
+  }
+
+  res.json({ success: true });
 });
 
 // ── UPDATE PROFILE (protected) ──
@@ -369,6 +374,38 @@ app.post('/api/admin/sit-in-log', adminMiddleware, (req, res) => {
 app.post('/api/admin/sit-out-log/:id', adminMiddleware, (req, res) => {
   db.prepare(`UPDATE sit_in_logs SET logout_time = datetime('now','localtime') WHERE id = ?`)
     .run(req.params.id);
+  res.json({ success: true });
+});
+
+// ── ADMIN: GET SIT-IN LOGS WITH SESSION ──
+app.get('/api/admin/sitin', adminMiddleware, (req, res) => {
+  const logs = db.prepare(`
+    SELECT l.*, s.sessions
+    FROM sit_in_logs l
+    LEFT JOIN students s ON l.id_number = s.id_number
+    ORDER BY l.date DESC, l.login_time DESC
+  `).all();
+  res.json({ success: true, logs });
+});
+
+// ── ADMIN: LOGOUT STUDENT FROM SIT-IN ──
+app.post('/api/admin/sitin-logout/:id', adminMiddleware, (req, res) => {
+  const logEntry = db.prepare('SELECT * FROM sit_in_logs WHERE id = ?').get(req.params.id);
+  if (!logEntry) return res.json({ success: false, message: 'Log entry not found.' });
+  if (logEntry.logout_time) return res.json({ success: false, message: 'Student already logged out.' });
+
+  // deduct session
+  const student = db.prepare('SELECT * FROM students WHERE id_number = ?').get(logEntry.id_number);
+  if (student) {
+    const newSessions = Math.max(0, student.sessions - 1);
+    db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?')
+      .run(newSessions, logEntry.id_number);
+  }
+
+  // set logout time
+  db.prepare(`UPDATE sit_in_logs SET logout_time = datetime('now','localtime') WHERE id = ?`)
+    .run(req.params.id);
+
   res.json({ success: true });
 });
 
