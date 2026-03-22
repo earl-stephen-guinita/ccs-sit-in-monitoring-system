@@ -89,7 +89,6 @@ const PAGE_TITLES = {
   register:     'CCS | Register',
   login:        'CCS | Login',
   profile:      'CCS | Profile',
-  'admin-login':'CCS | Admin Login',
   admin:        'CCS | Admin Panel',
 };
 
@@ -102,6 +101,7 @@ function showPage(pageKey) {
     document.title = PAGE_TITLES[pageKey] || 'CCS Sit-In Monitoring';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (pageKey === 'profile') loadProfile();
+    if (pageKey === 'admin') loadAdminAnnouncements();
 
     if (pageKey !== 'profile') {
       const editMode = document.getElementById('profileEditMode');
@@ -109,6 +109,19 @@ function showPage(pageKey) {
         toggleEditMode(false);
       }
     }    
+  }
+}
+
+/* ── go home ── */
+function goHome() {
+  showPage('home');
+  if (currentUser && getToken()) {
+    document.getElementById('heroSection').style.display = 'none';
+    document.getElementById('dashboardSection').style.display = '';
+    loadDashboard();
+  } else {
+    document.getElementById('heroSection').style.display = '';
+    document.getElementById('dashboardSection').style.display = 'none';
   }
 }
 
@@ -199,10 +212,15 @@ document.addEventListener('submit', function (e) {
       .then(res => res.json())
       .then(result => {
         if (result.success) {
-          currentUser = result.user;
-          saveSession(result.token, result.user);
-          updateNavForLoggedIn();
-          showPage('profile');
+          if (result.isAdmin) {
+            localStorage.setItem('ccs_admin_token', result.token);
+            showPage('admin');
+          } else {
+            currentUser = result.user;
+            saveSession(result.token, result.user);
+            updateNavForLoggedIn();
+            goHome();
+          }
         } else {
           alert(result.message || 'Login failed.');
         }
@@ -232,7 +250,7 @@ document.addEventListener('submit', function (e) {
       .then(res => res.json())
       .then(result => {
         if (result.success) {
-          currentUser = { ...currentUser, ...updated };
+          currentUser = { ...currentUser, ...updated, sessions: result.sessions ?? currentUser.sessions };
           saveSession(getToken(), currentUser);
           updateNavForLoggedIn();
 
@@ -243,70 +261,6 @@ document.addEventListener('submit', function (e) {
           alert('Profile updated successfully!');
         } else {
           alert(result.message || 'Update failed.');
-        }
-      })
-      .catch(() => alert('Could not reach the server.'));
-  }
-
-  /* admin login */
-  if (e.target.id === 'adminLoginForm') {
-    e.preventDefault();
-    const username = document.getElementById('adminUsername').value.trim();
-    const password = document.getElementById('adminPassword').value;
-
-    fetch('/api/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    })
-      .then(res => res.json())
-      .then(result => {
-        if (result.success) {
-          localStorage.setItem('ccs_admin_token', result.token);
-          document.getElementById('navAdminLogin').style.display = 'none';
-          showPage('admin');
-        } else {
-          alert(result.message || 'Invalid admin credentials.');
-        }
-      })
-      .catch(() => alert('Could not reach the server.'));
-  }
-
-  /* sit-in form */
-  if (e.target.id === 'sitInForm') {
-    e.preventDefault();
-    const errorEl = document.getElementById('sitInError');
-    const purpose = document.getElementById('sitPurpose').value;
-    const lab     = document.getElementById('sitLab').value;
-
-    if (!purpose || !lab) {
-      errorEl.textContent = 'Please select both a Purpose and a Lab.';
-      errorEl.style.display = '';
-      return;
-    }
-
-    const data = {
-      idNumber:  document.getElementById('sitIdNumber').value,
-      lastName:  document.getElementById('sitLastName').value.trim(),
-      firstName: document.getElementById('sitFirstName').value.trim(),
-      sessions:  document.getElementById('sitSessions').value,
-      purpose, lab,
-    };
-
-    const token = localStorage.getItem('ccs_admin_token');
-    fetch('/api/admin/sit-in', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify(data),
-    })
-      .then(res => res.json())
-      .then(result => {
-        if (result.success) {
-          alert('Sit-in confirmed! Remaining sessions: ' + result.remainingSessions);
-          clearSitInForm();
-        } else {
-          errorEl.textContent = result.message || 'Sit-in failed.';
-          errorEl.style.display = '';
         }
       })
       .catch(() => alert('Could not reach the server.'));
@@ -341,7 +295,34 @@ document.addEventListener('submit', function (e) {
         msgEl.textContent = '✗ Could not reach the server.';
       });
   }
+  
+  /* announcement form */
+  if (e.target.id === 'announcementForm') {
+    e.preventDefault();
+    const id      = document.getElementById('announcementEditId').value;
+    const title   = document.getElementById('announcementTitle').value.trim();
+    const content = document.getElementById('announcementContent').value.trim();
+    const token   = localStorage.getItem('ccs_admin_token');
 
+    const url    = id ? '/api/admin/announcements/' + id : '/api/admin/announcements';
+    const method = id ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ title, content }),
+    })
+      .then(res => res.json())
+      .then(result => {
+        if (result.success) {
+          cancelAnnouncementEdit();
+          loadAdminAnnouncements();
+        } else {
+          alert(result.message || 'Failed to save announcement.');
+        }
+      })
+      .catch(() => alert('Could not reach the server.'));
+  }
 });
 
 /* ── nav update after login ── */
@@ -355,38 +336,33 @@ function updateNavForLoggedIn() {
 
 /* ── logout ── */
 function logoutUser() {
-  currentUser = null;
-  clearSession();
-  document.getElementById('navLogin').style.display = '';
-  document.getElementById('navRegisterItem').style.display = ''; 
-  document.getElementById('navProfileItem').style.display = 'none';
-  document.getElementById('navLogoutItem').style.display = 'none';
-  showPage('home');
+  authFetch('/api/logout', { method: 'POST' })
+    .finally(() => {
+      currentUser = null;
+      clearSession();
+      document.getElementById('navLogin').style.display = '';
+      document.getElementById('navRegisterItem').style.display = '';
+      document.getElementById('navProfileItem').style.display = 'none';
+      document.getElementById('navLogoutItem').style.display = 'none';
+      document.getElementById('heroSection').style.display = '';
+      document.getElementById('dashboardSection').style.display = 'none';
+      showPage('home');
+    });
 }
 
 /* ── admin logout ── */
 function adminLogout() {
   localStorage.removeItem('ccs_admin_token');
-  document.getElementById('navAdminLogin').style.display = '';
   clearSitInForm();
   showPage('home');
 }
 
 window.addEventListener('DOMContentLoaded', function () {
-  if (currentUser && getToken()) updateNavForLoggedIn();
-  
-  const adminToken = localStorage.getItem('ccs_admin_token');
-  if (adminToken) {
-    try {
-      const payload = JSON.parse(atob(adminToken.split('.')[1]));
-      if (payload.exp * 1000 > Date.now()) {
-        document.getElementById('navAdminLogin').style.display = 'none';
-      } else {
-        localStorage.removeItem('ccs_admin_token');
-      }
-    } catch {
-      localStorage.removeItem('ccs_admin_token');
-    }
+  if (currentUser && getToken()) {
+    updateNavForLoggedIn();
+    document.getElementById('heroSection').style.display = 'none';
+    document.getElementById('dashboardSection').style.display = '';
+    loadDashboard();
   }
 
   const photoInput = document.getElementById('photoUpload');
@@ -478,7 +454,7 @@ function loadProfile() {
   document.getElementById('profileFullName').textContent =
     currentUser.firstName + ' ' + currentUser.lastName;
   document.getElementById('profileCourseBadge').textContent =
-    currentUser.course + ' — ' + currentUser.level;
+    currentUser.level + ' — ' + currentUser.course;
 
   const img      = document.getElementById('profilePhotoImg');
   const initials = document.getElementById('profileAvatarInitials');
@@ -493,7 +469,8 @@ function loadProfile() {
       (currentUser.firstName[0] + currentUser.lastName[0]).toUpperCase();
   }
 
-  const total     = 28;
+  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+  const total = itCourses.includes(currentUser.course) ? 30 : 15;
   const remaining = currentUser.sessions !== undefined ? currentUser.sessions : 30;
   document.getElementById('sessionCount').textContent = remaining + ' / ' + total;
   const dotsEl = document.getElementById('sessionDots');
@@ -508,8 +485,7 @@ function loadProfile() {
   document.getElementById('vLastName').textContent   = currentUser.lastName;
   document.getElementById('vFirstName').textContent  = currentUser.firstName;
   document.getElementById('vMiddleName').textContent = currentUser.middleName || '—';
-  document.getElementById('vCourse').textContent     = currentUser.course;
-  document.getElementById('vLevel').textContent      = currentUser.level;
+  document.getElementById('vCourseYear').textContent = currentUser.level + ' — ' + currentUser.course;
   document.getElementById('vEmail').textContent      = currentUser.email;
   document.getElementById('vAddress').textContent    = currentUser.address;
 }
@@ -549,4 +525,156 @@ function toggleEditMode(on) {
       }
     }
   }
+}
+
+/* ── load dashboard ── */
+function loadDashboard() {
+  if (!currentUser) return;
+
+  document.getElementById('dashWelcomeName').textContent = currentUser.firstName;
+
+  // student info
+  const img = document.getElementById('dashPhotoImg');
+  const initials = document.getElementById('dashAvatarInitials');
+  if (currentUser.photo) {
+    img.src = currentUser.photo;
+    img.style.display = 'block';
+    initials.style.display = 'none';
+  } else {
+    img.style.display = 'none';
+    initials.style.display = '';
+    initials.textContent = (currentUser.firstName[0] + currentUser.lastName[0]).toUpperCase();
+  }
+
+  document.getElementById('dashFullName').textContent  = currentUser.firstName + ' ' + (currentUser.middleName ? currentUser.middleName + ' ' : '') + currentUser.lastName;
+  document.getElementById('dashCourseYear').textContent = currentUser.level + ' — ' + currentUser.course;
+  document.getElementById('dashEmail').textContent     = currentUser.email;
+  document.getElementById('dashAddress').textContent   = currentUser.address;
+
+  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+  const total     = itCourses.includes(currentUser.course) ? 30 : 15;
+  const remaining = currentUser.sessions !== undefined ? currentUser.sessions : total;
+  document.getElementById('dashSessionsCount').textContent = remaining + ' / ' + total;
+  const dotsEl = document.getElementById('dashSessionDots');
+  dotsEl.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'session-dot' + (i >= remaining ? ' used' : '');
+    dotsEl.appendChild(dot);
+  }
+
+  // fetch announcements
+  authFetch('/api/announcements')
+    .then(res => res.json())
+    .then(result => {
+      const el = document.getElementById('dashAnnouncementsList');
+      if (!result.announcements || result.announcements.length === 0) {
+        el.innerHTML = '<p class="dash-empty">No announcements yet.</p>';
+        return;
+      }
+      el.innerHTML = result.announcements.map(a => `
+        <div class="dash-announcement-item">
+          <div class="dash-announcement-title">${a.title}</div>
+          <div class="dash-announcement-content">${a.content}</div>
+          <div class="dash-announcement-date">${a.created_at}</div>
+        </div>
+      `).join('');
+    })
+    .catch(() => {});
+
+  // hardcoded rules
+  document.getElementById('dashRulesContent').innerHTML = `
+    <div class="dash-rules-content">
+      <div style="text-align:center; margin-bottom:0.75rem; line-height:1.6;">
+        <strong>University of Cebu</strong><br>
+        <strong>COLLEGE OF INFORMATION & COMPUTER STUDIES</strong>
+      </div>
+      <strong>LABORATORY RULES AND REGULATIONS</strong>
+      <div style="margin-top:0.4rem; margin-bottom:0.4rem;">To avoid embarrassment and maintain camaraderie with your friends and superiors at our laboratories, please observe the following:</div>
+      <div>1. Maintain silence, proper decorum, and discipline inside the laboratory. Mobile phones, walkmans and other personal pieces of equipment must be switched off.</div>
+      <div>2. Games are not allowed inside the lab. This includes computer-related games, card games and other games that may disturb the operation of the lab.</div>
+      <div>3. Surfing the Internet is allowed only with the permission of the instructor. Downloading and installing of software are strictly prohibited.</div>
+      <div>4. Students are not allowed to use the laboratory for personal purposes during class hours.</div>
+      <div>5. Food, and drinks are strictly prohibited inside the laboratory.</div>
+      <div>6. Students must take care of the equipment. Any damage due to misuse or negligence will be charged to the responsible student/s.</div>
+      <div>7. Chairs must be arranged properly before leaving the laboratory.</div>
+      <div>8. Students must log out of all accounts before leaving.</div>
+      <div>9. Follow the instructions of the laboratory staff at all times.</div>
+    </div>
+  `;
+}
+
+/* ── toggle dash card (mobile) ── */
+function toggleDashCard(bodyId) {
+  if (window.innerWidth > 768) return;
+  const body    = document.getElementById(bodyId);
+  const chevron = document.getElementById('chevron-' + bodyId);
+  const isOpen  = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  if (chevron) chevron.classList.toggle('open', !isOpen);
+}
+
+/* ── load admin announcements list ── */
+function loadAdminAnnouncements() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/announcements-admin', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      const el = document.getElementById('adminAnnouncementsList');
+      if (!result.announcements || result.announcements.length === 0) {
+        el.innerHTML = '<p class="text-muted small">No announcements yet.</p>';
+        return;
+      }
+      el.innerHTML = result.announcements.map(a => `
+        <div class="admin-announcement-item">
+          <div class="admin-announcement-item-title">${a.title}</div>
+          <div class="admin-announcement-item-content">${a.content}</div>
+          <div class="admin-announcement-actions">
+            <button class="btn-ann-edit" onclick="editAnnouncement(${a.id}, '${encodeURIComponent(a.title)}', '${encodeURIComponent(a.content)}')">
+              <i class="bi bi-pencil-fill me-1"></i>Edit
+            </button>
+            <button class="btn-ann-delete" onclick="deleteAnnouncement(${a.id})">
+              <i class="bi bi-trash-fill me-1"></i>Delete
+            </button>
+          </div>
+        </div>
+      `).join('');
+    })
+    .catch(() => {});
+}
+
+/* ── edit announcement ── */
+function editAnnouncement(id, title, content) {
+  document.getElementById('announcementEditId').value    = id;
+  document.getElementById('announcementTitle').value     = decodeURIComponent(title);
+  document.getElementById('announcementContent').value   = decodeURIComponent(content);
+  document.getElementById('announcementSubmitBtn').innerHTML = '<i class="bi bi-check-lg me-1"></i> Save Changes';
+  document.getElementById('announcementCancelBtn').style.display = '';
+  document.getElementById('announcementTitle').focus();
+}
+
+/* ── cancel announcement edit ── */
+function cancelAnnouncementEdit() {
+  document.getElementById('announcementEditId').value    = '';
+  document.getElementById('announcementTitle').value     = '';
+  document.getElementById('announcementContent').value   = '';
+  document.getElementById('announcementSubmitBtn').innerHTML = '<i class="bi bi-plus-lg me-1"></i> Post Announcement';
+  document.getElementById('announcementCancelBtn').style.display = 'none';
+}
+
+/* ── delete announcement ── */
+function deleteAnnouncement(id) {
+  if (!confirm('Delete this announcement?')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/announcements/' + id, {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) loadAdminAnnouncements();
+    })
+    .catch(() => alert('Could not reach the server.'));
 }

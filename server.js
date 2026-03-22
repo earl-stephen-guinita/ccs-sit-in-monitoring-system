@@ -54,6 +54,31 @@ catch (e) {}
 try { db.exec(`ALTER TABLE students ADD COLUMN photo TEXT`); }
 catch (e) {}
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS announcements (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    title      TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS rules (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    content    TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+  )
+`);
+
+// insert default rules if none exist
+const existingRules = db.prepare('SELECT id FROM rules').get();
+if (!existingRules) {
+  db.prepare(`INSERT INTO rules (content) VALUES (?)`)
+    .run('1. Students must log in before using the laboratory.\n2. No food or drinks inside the laboratory.\n3. Handle equipment with care.\n4. Log out after every session.\n5. Follow the instructions of the laboratory staff at all times.');
+}
+
 // create default admin if none exists
 (async () => {
   const existing = db.prepare('SELECT id FROM admins WHERE username = ?').get('admin');
@@ -104,18 +129,31 @@ app.post('/api/register', async (req, res) => {
   if (existing) return res.json({ success: false, message: 'ID number already registered.' });
 
   const hashed = await bcrypt.hash(password, 10);
+
+  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+  const sessions = itCourses.includes(course) ? 30 : 15;
+
   db.prepare(`
     INSERT INTO students
       (id_number, last_name, first_name, middle_name, course, year_level, email, address, password, sessions)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 28)
-  `).run(idNumber, lastName, firstName, middleName, course, level, email, address, hashed);
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(idNumber, lastName, firstName, middleName, course, level, email, address, hashed, sessions);
 
   res.json({ success: true });
 });
 
-// ── STUDENT LOGIN ──
+// ── LOGIN ──
 app.post('/api/login', async (req, res) => {
   const { idNumber, password } = req.body;
+
+  const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(idNumber);
+  if (admin) {
+    const match = await bcrypt.compare(password, admin.password);
+    if (!match) return res.json({ success: false, message: 'Invalid credentials.' });
+    const token = jwt.sign({ username: admin.username, isAdmin: true }, SECRET, { expiresIn: '8h' });
+    return res.json({ success: true, token, isAdmin: true });
+  }  
+
   const user = db.prepare('SELECT * FROM students WHERE id_number = ?').get(idNumber);
   if (!user) return res.json({ success: false, message: 'Invalid ID number or password.' });
 
@@ -151,6 +189,18 @@ app.get('/api/profile', authMiddleware, (req, res) => {
   });
 });
 
+// ── STUDENT LOGOUT ──
+app.post('/api/logout', authMiddleware, (req, res) => {
+  const user = db.prepare('SELECT * FROM students WHERE id_number = ?').get(req.user.idNumber);
+  if (!user) return res.json({ success: false });
+
+  const newSessions = Math.max(0, user.sessions - 1);
+  db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?')
+    .run(newSessions, req.user.idNumber);
+
+  res.json({ success: true, remainingSessions: newSessions });
+});
+
 // ── UPDATE PROFILE (protected) ──
 app.post('/api/profile/update', authMiddleware, async (req, res) => {
   const { firstName, lastName, middleName, course, level, email, address, password, photo } = req.body;
@@ -158,30 +208,24 @@ app.post('/api/profile/update', authMiddleware, async (req, res) => {
   const existing = db.prepare('SELECT id FROM students WHERE id_number = ?').get(idNumber);
   if (!existing) return res.json({ success: false, message: 'User not found.' });
 
+  // recalculate sessions if course changed
+  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+  let sessions = existing.sessions;
+  if (course !== existing.course) {
+    sessions = itCourses.includes(course) ? 30 : 15;
+  } 
+
   if (password && password.trim() !== '') {
     const hashed = await bcrypt.hash(password, 10);
     db.prepare(`UPDATE students SET last_name=?, first_name=?, middle_name=?,
-      course=?, year_level=?, email=?, address=?, password=?, photo=? WHERE id_number=?`)
-      .run(lastName, firstName, middleName, course, level, email, address, hashed, photo || null, idNumber);
+      course=?, year_level=?, email=?, address=?, password=?, photo=?, sessions=? WHERE id_number=?`)
+      .run(lastName, firstName, middleName, course, level, email, address, hashed, photo || null, sessions, idNumber);
   } else {
     db.prepare(`UPDATE students SET last_name=?, first_name=?, middle_name=?,
-      course=?, year_level=?, email=?, address=?, photo=? WHERE id_number=?`)
-      .run(lastName, firstName, middleName, course, level, email, address, photo || null, idNumber);
+      course=?, year_level=?, email=?, address=?, photo=?, sessions=? WHERE id_number=?`)
+      .run(lastName, firstName, middleName, course, level, email, address, photo || null, sessions, idNumber);
   }
-  res.json({ success: true });
-});
-
-// ── ADMIN LOGIN ──
-app.post('/api/admin/login', async (req, res) => {
-  const { username, password } = req.body;
-  const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(username);
-  if (!admin) return res.json({ success: false, message: 'Invalid credentials.' });
-
-  const match = await bcrypt.compare(password, admin.password);
-  if (!match) return res.json({ success: false, message: 'Invalid credentials.' });
-
-  const token = jwt.sign({ username: admin.username, isAdmin: true }, SECRET, { expiresIn: '8h' });
-  res.json({ success: true, token });
+  res.json({ success: true, sessions });
 });
 
 // ── ADMIN: SEARCH STUDENT ──
@@ -243,6 +287,41 @@ app.post('/api/admin/change-password', adminMiddleware, async (req, res) => {
   const hashed = await bcrypt.hash(newPassword, 10);
   db.prepare('UPDATE admins SET password = ? WHERE username = ?').run(hashed, req.admin.username);
   res.json({ success: true });
+});
+
+// ── GET ANNOUNCEMENTS ──
+app.get('/api/announcements', authMiddleware, (req, res) => {
+  const announcements = db.prepare('SELECT * FROM announcements ORDER BY created_at DESC').all();
+  res.json({ success: true, announcements });
+});
+
+// ── ADMIN: ADD ANNOUNCEMENT ──
+app.post('/api/admin/announcements', adminMiddleware, (req, res) => {
+  const { title, content } = req.body;
+  if (!title || !content) return res.json({ success: false, message: 'Title and content are required.' });
+  db.prepare('INSERT INTO announcements (title, content) VALUES (?, ?)').run(title, content);
+  res.json({ success: true });
+});
+
+// ── ADMIN: EDIT ANNOUNCEMENT ──
+app.put('/api/admin/announcements/:id', adminMiddleware, (req, res) => {
+  const { title, content } = req.body;
+  const { id } = req.params;
+  db.prepare(`UPDATE announcements SET title=?, content=?, updated_at=datetime('now','localtime') WHERE id=?`)
+    .run(title, content, id);
+  res.json({ success: true });
+});
+
+// ── ADMIN: DELETE ANNOUNCEMENT ──
+app.delete('/api/admin/announcements/:id', adminMiddleware, (req, res) => {
+  db.prepare('DELETE FROM announcements WHERE id=?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// ── ADMIN: GET ANNOUNCEMENTS ──
+app.get('/api/announcements-admin', adminMiddleware, (req, res) => {
+  const announcements = db.prepare('SELECT * FROM announcements ORDER BY created_at DESC').all();
+  res.json({ success: true, announcements });
 });
 
 app.listen(3000, () => console.log('Server running at http://localhost:3000'));
