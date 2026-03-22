@@ -65,19 +65,19 @@ db.exec(`
 `);
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS rules (
+  CREATE TABLE IF NOT EXISTS sit_in_logs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    content    TEXT NOT NULL,
-    updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    id_number  TEXT NOT NULL,
+    last_name  TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    purpose    TEXT NOT NULL,
+    lab        TEXT NOT NULL,
+    login_time TEXT DEFAULT (datetime('now', 'localtime')),
+    logout_time TEXT,
+    date       TEXT DEFAULT (date('now', 'localtime')),
+    feedback   TEXT
   )
 `);
-
-// insert default rules if none exist
-const existingRules = db.prepare('SELECT id FROM rules').get();
-if (!existingRules) {
-  db.prepare(`INSERT INTO rules (content) VALUES (?)`)
-    .run('1. Students must log in before using the laboratory.\n2. No food or drinks inside the laboratory.\n3. Handle equipment with care.\n4. Log out after every session.\n5. Follow the instructions of the laboratory staff at all times.');
-}
 
 // create default admin if none exists
 (async () => {
@@ -198,6 +198,15 @@ app.post('/api/logout', authMiddleware, (req, res) => {
   db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?')
     .run(newSessions, req.user.idNumber);
 
+  db.prepare(`
+    UPDATE sit_in_logs SET logout_time = datetime('now','localtime')
+    WHERE id = (
+      SELECT id FROM sit_in_logs
+      WHERE id_number = ? AND logout_time IS NULL
+      ORDER BY login_time DESC LIMIT 1
+    )
+  `).run(req.user.idNumber);
+
   res.json({ success: true, remainingSessions: newSessions });
 });
 
@@ -268,6 +277,9 @@ app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
     VALUES (?, ?, ?, ?, ?)`)
     .run(idNumber, lastName, firstName, purpose, lab);
 
+  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab) VALUES (?, ?, ?, ?, ?)`)
+    .run(idNumber, lastName, firstName, purpose, lab);
+
   res.json({ success: true, remainingSessions: newSessions });
 });
 
@@ -322,6 +334,42 @@ app.delete('/api/admin/announcements/:id', adminMiddleware, (req, res) => {
 app.get('/api/announcements-admin', adminMiddleware, (req, res) => {
   const announcements = db.prepare('SELECT * FROM announcements ORDER BY created_at DESC').all();
   res.json({ success: true, announcements });
+});
+
+// ── STUDENT: GET OWN HISTORY ──
+app.get('/api/history', authMiddleware, (req, res) => {
+  const logs = db.prepare('SELECT * FROM sit_in_logs WHERE id_number = ? ORDER BY date DESC, login_time DESC').all(req.user.idNumber);
+  res.json({ success: true, logs });
+});
+
+// ── STUDENT: SUBMIT FEEDBACK ──
+app.post('/api/history/feedback/:id', authMiddleware, (req, res) => {
+  const { feedback } = req.body;
+  const { id } = req.params;
+  db.prepare('UPDATE sit_in_logs SET feedback = ? WHERE id = ? AND id_number = ?')
+    .run(feedback, id, req.user.idNumber);
+  res.json({ success: true });
+});
+
+// ── ADMIN: GET ALL HISTORY ──
+app.get('/api/admin/history', adminMiddleware, (req, res) => {
+  const logs = db.prepare('SELECT * FROM sit_in_logs ORDER BY date DESC, login_time DESC').all();
+  res.json({ success: true, logs });
+});
+
+// ── ADMIN: LOG STUDENT IN ──
+app.post('/api/admin/sit-in-log', adminMiddleware, (req, res) => {
+  const { idNumber, lastName, firstName, purpose, lab } = req.body;
+  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab) VALUES (?, ?, ?, ?, ?)`)
+    .run(idNumber, lastName, firstName, purpose, lab);
+  res.json({ success: true });
+});
+
+// ── ADMIN: LOG STUDENT OUT ──
+app.post('/api/admin/sit-out-log/:id', adminMiddleware, (req, res) => {
+  db.prepare(`UPDATE sit_in_logs SET logout_time = datetime('now','localtime') WHERE id = ?`)
+    .run(req.params.id);
+  res.json({ success: true });
 });
 
 app.listen(3000, () => console.log('Server running at http://localhost:3000'));

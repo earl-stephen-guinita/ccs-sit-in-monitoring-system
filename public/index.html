@@ -63,6 +63,11 @@
                 <i class="bi bi-person-circle me-1"></i><span id="navProfileName">Profile</span>
               </a>
             </li>
+            <li class="nav-item" id="navHistoryItem" style="display:none;">
+              <a class="nav-link nav-pill" href="#" onclick="showPage('history'); return false;">
+                <i class="bi bi-clock-history me-1"></i>History
+              </a>
+            </li>
             <li class="nav-item" id="navLogoutItem" style="display:none;">
               <a class="nav-link nav-pill" href="#" onclick="logoutUser(); return false;">Logout</a>
             </li>
@@ -590,6 +595,85 @@
               </form>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== history page ===================== -->
+  <div id="page-history" class="page">
+    <div class="history-page-wrapper">
+      <div class="history-container">
+        <button class="btn btn-back mb-4" onclick="showPage('home')">
+          <i class="bi bi-arrow-left me-1"></i> Back
+        </button>
+        <div class="history-card">
+          <div class="history-card-header">
+            <h4 class="history-title"><i class="bi bi-clock-history me-2"></i>History Information</h4>
+          </div>
+          <div class="history-controls">
+            <div class="history-show">
+              <label>Show
+                <select id="historyPageSize" onchange="renderHistoryTable()">
+                  <option value="10" selected>10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                </select>
+                entries
+              </label>
+            </div>
+            <div class="history-search">
+              <label>Search: <input type="text" id="historySearch" oninput="renderHistoryTable()" placeholder="Search..." /></label>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="history-table" id="historyTable">
+              <thead>
+                <tr>
+                  <th onclick="sortHistory('id_number')">ID Number <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                  <th onclick="sortHistory('name')">Name <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                  <th onclick="sortHistory('purpose')">Sit-In Purpose <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                  <th onclick="sortHistory('lab')">Laboratory <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                  <th onclick="sortHistory('login_time')">Login <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                  <th onclick="sortHistory('logout_time')">Logout <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                  <th onclick="sortHistory('date')">Date <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                <tr><td colspan="8" class="text-center text-muted py-3">No records found.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="history-footer">
+            <div class="history-info" id="historyInfo">Showing 0 to 0 of 0 entries</div>
+            <div class="history-pagination" id="historyPagination"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- feedback modal -->
+  <div class="modal fade" id="feedbackModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header" style="background: linear-gradient(135deg, #2d0f5e, #6b2fa0);">
+          <h5 class="modal-title text-white"><i class="bi bi-chat-left-text me-2"></i>Submit Feedback</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="feedbackLogId" />
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Your Feedback</label>
+            <textarea class="form-control" id="feedbackText" rows="4" placeholder="Write your feedback here..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-cancel-edit" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-register px-4" onclick="submitFeedback()">
+            <i class="bi bi-send me-1"></i> Submit
+          </button>
         </div>
       </div>
     </div>

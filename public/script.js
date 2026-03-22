@@ -90,6 +90,7 @@ const PAGE_TITLES = {
   login:        'CCS | Login',
   profile:      'CCS | Profile',
   admin:        'CCS | Admin Panel',
+  history:      'CCS | History',
 };
 
 /* ── page switcher ── */
@@ -102,6 +103,7 @@ function showPage(pageKey) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (pageKey === 'profile') loadProfile();
     if (pageKey === 'admin') loadAdminAnnouncements();
+    if (pageKey === 'history') loadHistory();
 
     if (pageKey !== 'profile') {
       const editMode = document.getElementById('profileEditMode');
@@ -323,6 +325,41 @@ document.addEventListener('submit', function (e) {
       })
       .catch(() => alert('Could not reach the server.'));
   }
+
+  /* sit-in form */
+  if (e.target.id === 'sitInForm') {
+    e.preventDefault();
+    const idNumber  = document.getElementById('sitIdNumber').value;
+    const lastName  = document.getElementById('sitLastName').value;
+    const firstName = document.getElementById('sitFirstName').value;
+    const sessions  = document.getElementById('sitSessions').value;
+    const purpose   = document.getElementById('sitPurpose').value;
+    const lab       = document.getElementById('sitLab').value;
+    const token     = localStorage.getItem('ccs_admin_token');
+
+    if (!purpose || !lab) {
+      document.getElementById('sitInError').textContent = 'Please select a purpose and lab.';
+      document.getElementById('sitInError').style.display = '';
+      return;
+    }
+
+    fetch('/api/admin/sit-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ idNumber, lastName, firstName, sessions, purpose, lab }),
+    })
+      .then(res => res.json())
+      .then(result => {
+        if (result.success) {
+          alert('Sit-in confirmed! Remaining sessions: ' + result.remainingSessions);
+          clearSitInForm();
+        } else {
+          document.getElementById('sitInError').textContent = result.message || 'Failed to confirm sit-in.';
+          document.getElementById('sitInError').style.display = '';
+        }
+      })
+      .catch(() => alert('Could not reach the server.'));
+  }
 });
 
 /* ── nav update after login ── */
@@ -332,6 +369,7 @@ function updateNavForLoggedIn() {
   document.getElementById('navProfileItem').style.display = '';
   document.getElementById('navLogoutItem').style.display = '';
   document.getElementById('navProfileName').textContent = currentUser.firstName;
+  document.getElementById('navHistoryItem').style.display = '';
 }
 
 /* ── logout ── */
@@ -346,6 +384,7 @@ function logoutUser() {
       document.getElementById('navLogoutItem').style.display = 'none';
       document.getElementById('heroSection').style.display = '';
       document.getElementById('dashboardSection').style.display = 'none';
+      document.getElementById('navHistoryItem').style.display = 'none';
       showPage('home');
     });
 }
@@ -675,6 +714,170 @@ function deleteAnnouncement(id) {
     .then(res => res.json())
     .then(result => {
       if (result.success) loadAdminAnnouncements();
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+
+/* ── history state ── */
+let historyData = [];
+let historySortKey = 'date';
+let historySortDir = 'desc';
+let historyPage = 1;
+
+/* ── load history ── */
+function loadHistory() {
+  authFetch('/api/history')
+    .then(res => res.json())
+    .then(result => {
+      historyData = result.logs || [];
+      historyPage = 1;
+      renderHistoryTable();
+    })
+    .catch(() => {});
+}
+
+/* ── sort history ── */
+function sortHistory(key) {
+  if (historySortKey === key) {
+    historySortDir = historySortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    historySortKey = key;
+    historySortDir = 'asc';
+  }
+  historyPage = 1;
+  renderHistoryTable();
+}
+
+/* ── render history table ── */
+function renderHistoryTable() {
+  const pageSize  = parseInt(document.getElementById('historyPageSize').value);
+  const search    = document.getElementById('historySearch').value.toLowerCase();
+
+  // filter
+  let filtered = historyData.filter(r => {
+    const name = r.first_name + ' ' + r.last_name;
+    return (
+      r.id_number.toLowerCase().includes(search) ||
+      name.toLowerCase().includes(search) ||
+      r.purpose.toLowerCase().includes(search) ||
+      r.lab.toLowerCase().includes(search) ||
+      (r.date || '').toLowerCase().includes(search)
+    );
+  });
+
+  // sort
+  filtered.sort((a, b) => {
+    let valA, valB;
+    if (historySortKey === 'name') {
+      valA = a.first_name + ' ' + a.last_name;
+      valB = b.first_name + ' ' + b.last_name;
+    } else {
+      valA = a[historySortKey] || '';
+      valB = b[historySortKey] || '';
+    }
+    if (valA < valB) return historySortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return historySortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // paginate
+  const total   = filtered.length;
+  const pages   = Math.max(1, Math.ceil(total / pageSize));
+  if (historyPage > pages) historyPage = pages;
+  const start   = (historyPage - 1) * pageSize;
+  const end     = Math.min(start + pageSize, total);
+  const paged   = filtered.slice(start, end);
+
+  // update sort icons
+  document.querySelectorAll('.sort-btns').forEach(el => el.classList.remove('active'));
+  const ths = document.querySelectorAll('#historyTable th');
+  const keys = ['id_number', 'name', 'purpose', 'lab', 'login_time', 'logout_time', 'date'];
+  keys.forEach((k, i) => {
+    if (k === historySortKey) ths[i].querySelector('.sort-btns').classList.add('active');
+  });
+
+  // render rows
+  const tbody = document.getElementById('historyTableBody');
+  if (paged.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No records found.</td></tr>';
+  } else {
+    tbody.innerHTML = paged.map(r => `
+      <tr>
+        <td>${r.id_number}</td>
+        <td>${r.first_name} ${r.last_name}</td>
+        <td>${r.purpose}</td>
+        <td>${r.lab}</td>
+        <td>${r.login_time || '—'}</td>
+        <td>${r.logout_time || '—'}</td>
+        <td>${r.date || '—'}</td>
+        <td>
+          <button class="btn-feedback ${r.feedback ? 'submitted' : ''}"
+            onclick="${r.feedback ? '' : 'openFeedback(' + r.id + ')'}"
+            ${r.feedback ? 'disabled title="Feedback submitted"' : ''}>
+            <i class="bi bi-chat-left-text me-1"></i>${r.feedback ? 'Submitted' : 'Feedback'}
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  // update info
+  document.getElementById('historyInfo').textContent =
+    total === 0 ? 'Showing 0 to 0 of 0 entries'
+    : `Showing ${start + 1} to ${end} of ${total} entries`;
+
+  // render pagination
+  const pag = document.getElementById('historyPagination');
+  pag.innerHTML = '';
+  const mkBtn = (label, page, disabled, active) => {
+    const btn = document.createElement('button');
+    btn.className = 'page-btn' + (active ? ' active' : '');
+    btn.innerHTML = label;
+    btn.disabled = disabled;
+    btn.onclick = () => { historyPage = page; renderHistoryTable(); };
+    pag.appendChild(btn);
+  };
+  mkBtn('&laquo;', 1, historyPage === 1, false);
+  mkBtn('&lsaquo;', historyPage - 1, historyPage === 1, false);
+  for (let i = 1; i <= pages; i++) {
+    if (pages <= 5 || Math.abs(i - historyPage) <= 1 || i === 1 || i === pages) {
+      mkBtn(i, i, false, i === historyPage);
+    } else if (Math.abs(i - historyPage) === 2) {
+      const dots = document.createElement('span');
+      dots.textContent = '…';
+      dots.style.cssText = 'padding:0.25rem 0.4rem; color:#aaa; font-size:0.82rem;';
+      pag.appendChild(dots);
+    }
+  }
+  mkBtn('&rsaquo;', historyPage + 1, historyPage === pages, false);
+  mkBtn('&raquo;', pages, historyPage === pages, false);
+}
+
+/* ── open feedback modal ── */
+function openFeedback(logId) {
+  document.getElementById('feedbackLogId').value = logId;
+  document.getElementById('feedbackText').value = '';
+  new bootstrap.Modal(document.getElementById('feedbackModal')).show();
+}
+
+/* ── submit feedback ── */
+function submitFeedback() {
+  const id       = document.getElementById('feedbackLogId').value;
+  const feedback = document.getElementById('feedbackText').value.trim();
+  if (!feedback) { alert('Please write your feedback first.'); return; }
+
+  authFetch('/api/history/feedback/' + id, {
+    method: 'POST',
+    body: JSON.stringify({ feedback }),
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        bootstrap.Modal.getInstance(document.getElementById('feedbackModal')).hide();
+        loadHistory();
+      } else {
+        alert(result.message || 'Failed to submit feedback.');
+      }
     })
     .catch(() => alert('Could not reach the server.'));
 }
