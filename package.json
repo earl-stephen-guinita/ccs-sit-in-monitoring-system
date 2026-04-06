@@ -2,23 +2,28 @@
   "name": "ccs-sit-in-monitoring-system",
   "version": "1.0.0",
   "description": "",
-  "main": "script.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/earl-stephen-guinita/ccs-sit-in-monitoring-system.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/earl-stephen-guinita/ccs-sit-in-monitoring-system/issues"
+  },
+  "homepage": "https://github.com/earl-stephen-guinita/ccs-sit-in-monitoring-system#readme",
   "dependencies": {
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.8.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.14"
   }
 }
