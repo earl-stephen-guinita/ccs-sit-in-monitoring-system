@@ -244,7 +244,11 @@
 
           <form id="registerForm" novalidate>
 
+<<<<<<< Updated upstream
                         <div class="row g-2 mb-3">
+=======
+            <div class="row g-2 mb-3">
+>>>>>>> Stashed changes
               <div class="col-7">
                 <label for="course" class="form-label fw-semibold">Course <span class="text-danger">*</span></label>
                 <div class="input-group">
@@ -753,7 +757,7 @@
         <div class="admin-container">
           <div class="admin-header">
             <div>
-              <h2 class="admin-title"><i class="bi bi-shield-check me-2"></i>Admin Panel</h2>
+              <h2 class="admin-title"><i class="bi bi-shield-check me-2"></i>Admin Dashboard</h2>
               <p class="admin-subtitle">CCS Sit-In Monitoring System</p>
             </div>
             <button class="btn btn-admin-logout" onclick="adminLogout()">
@@ -789,21 +793,21 @@
                   <label class="form-label fw-semibold">ID Number</label>
                   <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-person-badge"></i></span>
-                    <input type="text" class="form-control" id="sitIdNumber" style="background:#f0e6ff; cursor:not-allowed;" />
+                    <input type="text" class="form-control" id="sitIdNumber" readonly style="background:#f0e6ff; cursor:not-allowed;" />
                   </div>
                 </div>
                 <div class="col-md-4">
                   <label class="form-label fw-semibold">Last Name</label>
                   <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-person"></i></span>
-                    <input type="text" class="form-control" id="sitLastName" />
+                    <input type="text" class="form-control" id="sitLastName" readonly style="background:#f0e6ff; cursor:not-allowed;" />
                   </div>
                 </div>
                 <div class="col-md-4">
                   <label class="form-label fw-semibold">First Name</label>
                   <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-person"></i></span>
-                    <input type="text" class="form-control" id="sitFirstName" />
+                    <input type="text" class="form-control" id="sitFirstName" readonly style="background:#f0e6ff; cursor:not-allowed;" />
                   </div>
                 </div>
               </div>
@@ -812,7 +816,11 @@
                   <label class="form-label fw-semibold">Remaining Sessions</label>
                   <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-clock-history"></i></span>
+<<<<<<< Updated upstream
                     <input type="number" class="form-control" id="sitSessions" min="0" max="30" />
+=======
+                    <input type="number" class="form-control" id="sitSessions" readonly min="0" max="30" style="background:#f0e6ff; cursor:not-allowed;" />
+>>>>>>> Stashed changes
                   </div>
                 </div>
                 <div class="col-md-4">
