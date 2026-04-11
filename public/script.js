@@ -616,77 +616,92 @@ function toggleEditMode(on) {
 function loadDashboard() {
   if (!currentUser) return;
 
-  document.getElementById('dashWelcomeName').textContent = currentUser.firstName;
-
-  // student info
-  const img = document.getElementById('dashPhotoImg');
-  const initials = document.getElementById('dashAvatarInitials');
-  if (currentUser.photo) {
-    img.src = currentUser.photo;
-    img.style.display = 'block';
-    initials.style.display = 'none';
-  } else {
-    img.style.display = 'none';
-    initials.style.display = '';
-    initials.textContent = (currentUser.firstName[0] + currentUser.lastName[0]).toUpperCase();
-  }
-
-  document.getElementById('dashFullName').textContent  = currentUser.firstName + ' ' + (currentUser.middleName ? currentUser.middleName + ' ' : '') + currentUser.lastName;
-  document.getElementById('dashCourseYear').textContent = currentUser.level + ' — ' + currentUser.course;
-  document.getElementById('dashEmail').textContent     = currentUser.email;
-  document.getElementById('dashAddress').textContent   = currentUser.address;
-
-  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
-  const total     = itCourses.includes(currentUser.course) ? 30 : 15;
-  const remaining = currentUser.sessions !== undefined ? currentUser.sessions : total;
-  document.getElementById('dashSessionsCount').textContent = remaining + ' / ' + total;
-  const dotsEl = document.getElementById('dashSessionDots');
-  dotsEl.innerHTML = '';
-  for (let i = 0; i < total; i++) {
-    const dot = document.createElement('div');
-    dot.className = 'session-dot' + (i >= remaining ? ' used' : '');
-    dotsEl.appendChild(dot);
-  }
-
-  // fetch announcements
-  authFetch('/api/announcements')
+  // fetch fresh session count from server first, then render
+  authFetch('/api/profile')
     .then(res => res.json())
     .then(result => {
-      const el = document.getElementById('dashAnnouncementsList');
-      if (!result.announcements || result.announcements.length === 0) {
-        el.innerHTML = '<p class="dash-empty">No announcements yet.</p>';
-        return;
+      if (result.success) {
+        // update session count from server (may have changed since last login)
+        currentUser.sessions = result.user.sessions;
+        saveSession(getToken(), currentUser);
       }
-      el.innerHTML = result.announcements.map(a => `
-        <div class="dash-announcement-item">
-          <div class="dash-announcement-title">${a.title}</div>
-          <div class="dash-announcement-content">${a.content}</div>
-          <div class="dash-announcement-date">${a.created_at}</div>
-        </div>
-      `).join('');
-    })
-    .catch(() => {});
 
-  // hardcoded rules
-  document.getElementById('dashRulesContent').innerHTML = `
-    <div class="dash-rules-content">
-      <div style="text-align:center; margin-bottom:0.75rem; line-height:1.6;">
-        <strong>University of Cebu</strong><br>
-        <strong>COLLEGE OF INFORMATION & COMPUTER STUDIES</strong>
-      </div>
-      <strong>LABORATORY RULES AND REGULATIONS</strong>
-      <div style="margin-top:0.4rem; margin-bottom:0.4rem;">To avoid embarrassment and maintain camaraderie with your friends and superiors at our laboratories, please observe the following:</div>
-      <div>1. Maintain silence, proper decorum, and discipline inside the laboratory. Mobile phones, walkmans and other personal pieces of equipment must be switched off.</div>
-      <div>2. Games are not allowed inside the lab. This includes computer-related games, card games and other games that may disturb the operation of the lab.</div>
-      <div>3. Surfing the Internet is allowed only with the permission of the instructor. Downloading and installing of software are strictly prohibited.</div>
-      <div>4. Students are not allowed to use the laboratory for personal purposes during class hours.</div>
-      <div>5. Food, and drinks are strictly prohibited inside the laboratory.</div>
-      <div>6. Students must take care of the equipment. Any damage due to misuse or negligence will be charged to the responsible student/s.</div>
-      <div>7. Chairs must be arranged properly before leaving the laboratory.</div>
-      <div>8. Students must log out of all accounts before leaving.</div>
-      <div>9. Follow the instructions of the laboratory staff at all times.</div>
-    </div>
-  `;
+      // render dashboard (uses updated currentUser)
+      document.getElementById('dashWelcomeName').textContent = currentUser.firstName;
+
+      const img = document.getElementById('dashPhotoImg');
+      const initials = document.getElementById('dashAvatarInitials');
+      if (currentUser.photo) {
+        img.src = currentUser.photo;
+        img.style.display = 'block';
+        initials.style.display = 'none';
+      } else {
+        img.style.display = 'none';
+        initials.style.display = '';
+        initials.textContent = (currentUser.firstName[0] + currentUser.lastName[0]).toUpperCase();
+      }
+
+      document.getElementById('dashFullName').textContent = currentUser.firstName + ' ' + (currentUser.middleName ? currentUser.middleName + ' ' : '') + currentUser.lastName;
+      document.getElementById('dashCourseYear').textContent = currentUser.level + ' — ' + currentUser.course;
+      document.getElementById('dashEmail').textContent = currentUser.email;
+      document.getElementById('dashAddress').textContent = currentUser.address;
+
+      const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+      const total     = itCourses.includes(currentUser.course) ? 30 : 15;
+      const remaining = currentUser.sessions !== undefined ? currentUser.sessions : total;
+      document.getElementById('dashSessionsCount').textContent = remaining + ' / ' + total;
+      const dotsEl = document.getElementById('dashSessionDots');
+      dotsEl.innerHTML = '';
+      for (let i = 0; i < total; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'session-dot' + (i >= remaining ? ' used' : '');
+        dotsEl.appendChild(dot);
+      }
+
+      // fetch announcements
+      authFetch('/api/announcements')
+        .then(res => res.json())
+        .then(result => {
+          const el = document.getElementById('dashAnnouncementsList');
+          if (!result.announcements || result.announcements.length === 0) {
+            el.innerHTML = '<p class="dash-empty">No announcements yet.</p>';
+            return;
+          }
+          el.innerHTML = result.announcements.map(a => `
+            <div class="dash-announcement-item">
+              <div class="dash-announcement-title">${a.title}</div>
+              <div class="dash-announcement-content">${a.content}</div>
+              <div class="dash-announcement-date">${a.created_at}</div>
+            </div>
+          `).join('');
+        })
+        .catch(() => {});
+
+      // hardcoded rules
+      document.getElementById('dashRulesContent').innerHTML = `
+        <div class="dash-rules-content">
+          <div style="text-align:center; margin-bottom:0.75rem; line-height:1.6;">
+            <strong>University of Cebu</strong><br>
+            <strong>COLLEGE OF INFORMATION & COMPUTER STUDIES</strong>
+          </div>
+          <strong>LABORATORY RULES AND REGULATIONS</strong>
+          <div style="margin-top:0.4rem; margin-bottom:0.4rem;">To avoid embarrassment and maintain camaraderie with your friends and superiors at our laboratories, please observe the following:</div>
+          <div>1. Maintain silence, proper decorum, and discipline inside the laboratory. Mobile phones, walkmans and other personal pieces of equipment must be switched off.</div>
+          <div>2. Games are not allowed inside the lab. This includes computer-related games, card games and other games that may disturb the operation of the lab.</div>
+          <div>3. Surfing the Internet is allowed only with the permission of the instructor. Downloading and installing of software are strictly prohibited.</div>
+          <div>4. Students are not allowed to use the laboratory for personal purposes during class hours.</div>
+          <div>5. Food, and drinks are strictly prohibited inside the laboratory.</div>
+          <div>6. Students must take care of the equipment. Any damage due to misuse or negligence will be charged to the responsible student/s.</div>
+          <div>7. Chairs must be arranged properly before leaving the laboratory.</div>
+          <div>8. Students must log out of all accounts before leaving.</div>
+          <div>9. Follow the instructions of the laboratory staff at all times.</div>
+        </div>
+      `;
+    })
+    .catch(() => {
+      // if fetch fails, still render with cached data
+      document.getElementById('dashWelcomeName').textContent = currentUser.firstName;
+    });
 }
 
 /* ── toggle dash card (mobile) ── */

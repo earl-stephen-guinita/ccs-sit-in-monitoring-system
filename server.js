@@ -28,7 +28,7 @@ db.exec(`
     email       TEXT NOT NULL,
     address     TEXT NOT NULL,
     password    TEXT NOT NULL,
-    sessions    INTEGER DEFAULT 28
+    sessions    INTEGER DEFAULT 30
   )
 `);
 
@@ -264,10 +264,6 @@ app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
     return res.json({ success: false, message: 'Student has no remaining sessions.' });
   }
 
-  db.prepare(`INSERT INTO sit_in_records (id_number, last_name, first_name, purpose, lab)
-    VALUES (?, ?, ?, ?, ?)`)
-    .run(idNumber, lastName, firstName, purpose, lab);
-
   db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, sessions_at_sitin)
     VALUES (?, ?, ?, ?, ?, ?)`)
     .run(idNumber, lastName, firstName, purpose, lab, student.sessions); // use student.sessions directly
@@ -347,21 +343,6 @@ app.post('/api/history/feedback/:id', authMiddleware, (req, res) => {
 app.get('/api/admin/history', adminMiddleware, (req, res) => {
   const logs = db.prepare('SELECT * FROM sit_in_logs ORDER BY date DESC, login_time DESC').all();
   res.json({ success: true, logs });
-});
-
-// ── ADMIN: LOG STUDENT IN ──
-app.post('/api/admin/sit-in-log', adminMiddleware, (req, res) => {
-  const { idNumber, lastName, firstName, purpose, lab } = req.body;
-  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab) VALUES (?, ?, ?, ?, ?)`)
-    .run(idNumber, lastName, firstName, purpose, lab);
-  res.json({ success: true });
-});
-
-// ── ADMIN: LOG STUDENT OUT ──
-app.post('/api/admin/sit-out-log/:id', adminMiddleware, (req, res) => {
-  db.prepare(`UPDATE sit_in_logs SET logout_time = datetime('now','localtime') WHERE id = ?`)
-    .run(req.params.id);
-  res.json({ success: true });
 });
 
 // ── ADMIN: GET SIT-IN LOGS WITH SESSION ──
