@@ -232,7 +232,7 @@ app.post('/api/logout', authMiddleware, (req, res) => {
 app.post('/api/profile/update', authMiddleware, async (req, res) => {
   const { firstName, lastName, middleName, course, level, email, address, password, photo } = req.body;
   const idNumber = req.user.idNumber;
-  const existing = db.prepare('SELECT id FROM students WHERE id_number = ?').get(idNumber);
+  const existing = db.prepare('SELECT * FROM students WHERE id_number = ?').get(idNumber);
   if (!existing) return res.json({ success: false, message: 'User not found.' });
 
   // recalculate sessions if course changed
@@ -274,7 +274,7 @@ app.get('/api/admin/search-student', adminMiddleware, (req, res) => {
 
 // ── ADMIN: CONFIRM SIT-IN ──
 app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
-  const { idNumber, lastName, firstName, purpose, lab, sessions } = req.body;
+  const { idNumber, lastName, firstName, purpose, lab } = req.body; // removed 'sessions' from destructure
 
   const student = db.prepare('SELECT * FROM students WHERE id_number = ?').get(idNumber);
   if (!student) return res.json({ success: false, message: 'Student not found.' });
@@ -283,22 +283,15 @@ app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
     return res.json({ success: false, message: 'Student has no remaining sessions.' });
   }
 
-  // use admin-provided sessions value, otherwise deduct 1
-  const newSessions = (sessions !== undefined && sessions !== '')
-    ? parseInt(sessions)
-    : student.sessions - 1;
-
-  db.prepare('UPDATE students SET sessions = ?, last_name = ?, first_name = ? WHERE id_number = ?')
-    .run(newSessions, lastName, firstName, idNumber);
-
   db.prepare(`INSERT INTO sit_in_records (id_number, last_name, first_name, purpose, lab)
     VALUES (?, ?, ?, ?, ?)`)
     .run(idNumber, lastName, firstName, purpose, lab);
 
-  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, sessions_at_sitin) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(idNumber, lastName, firstName, purpose, lab, newSessions);
+  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, sessions_at_sitin)
+    VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(idNumber, lastName, firstName, purpose, lab, student.sessions); // use student.sessions directly
 
-  res.json({ success: true, remainingSessions: newSessions });
+  res.json({ success: true, remainingSessions: student.sessions });
 });
 
 // ── ADMIN: CHANGE PASSWORD ──
