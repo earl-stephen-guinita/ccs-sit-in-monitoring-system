@@ -308,7 +308,7 @@ document.addEventListener('submit', function (e) {
         msgEl.textContent = '✗ Could not reach the server.';
       });
   }
-  
+
   /* announcement form */
   if (e.target.id === 'announcementForm') {
     e.preventDefault();
@@ -372,6 +372,7 @@ document.addEventListener('submit', function (e) {
       .catch(() => alert('Could not reach the server.'));
   }
 });
+
 
 function updateNavForLoggedIn() {
   document.getElementById('navLogin').style.display = 'none';
