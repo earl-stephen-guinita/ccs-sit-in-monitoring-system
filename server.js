@@ -40,18 +40,6 @@ db.exec(`
   )
 `);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS sit_in_records (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    id_number  TEXT NOT NULL,
-    last_name  TEXT NOT NULL,
-    first_name TEXT NOT NULL,
-    purpose    TEXT NOT NULL,
-    lab        TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now', 'localtime'))
-  )
-`);
-
 // add sessions column if upgrading from older database
 try { db.exec(`ALTER TABLE students ADD COLUMN sessions INTEGER DEFAULT 30`); }
 catch (e) {}
@@ -264,6 +252,11 @@ app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
     return res.json({ success: false, message: 'Student has no remaining sessions.' });
   }
 
+  const existing = db.prepare(
+    'SELECT id FROM sit_in_logs WHERE id_number = ? AND logout_time IS NULL'
+  ).get(idNumber);
+  if (existing) return res.json({ success: false, message: 'Student already has an active sit-in session.' });
+
   db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, sessions_at_sitin)
     VALUES (?, ?, ?, ?, ?, ?)`)
     .run(idNumber, lastName, firstName, purpose, lab, student.sessions); // use student.sessions directly
@@ -360,12 +353,17 @@ app.post('/api/admin/sitin-logout/:id', adminMiddleware, (req, res) => {
   if (!logEntry) return res.json({ success: false, message: 'Log entry not found.' });
   if (logEntry.logout_time) return res.json({ success: false, message: 'Student already logged out.' });
 
-  // deduct session
   const student = db.prepare('SELECT * FROM students WHERE id_number = ?').get(logEntry.id_number);
   if (student) {
     const newSessions = Math.max(0, student.sessions - 1);
+
+    // deduct session
     db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?')
       .run(newSessions, logEntry.id_number);
+
+    // ✅ update sessions_at_sitin to reflect post-deduction value
+    db.prepare('UPDATE sit_in_logs SET sessions_at_sitin = ? WHERE id = ?')
+      .run(newSessions, req.params.id);
   }
 
   // set logout time
