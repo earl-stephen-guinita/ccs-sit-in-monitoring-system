@@ -1,7 +1,5 @@
 require('dotenv').config();
 
-console.log(process.env.JWT_SECRET);
-
 const express  = require('express');
 const Database = require('better-sqlite3');
 const bcrypt   = require('bcrypt');
@@ -12,6 +10,10 @@ const path     = require('path');
 const app    = express();
 const db     = new Database('database.db');
 const SECRET = process.env.JWT_SECRET;
+if (!SECRET) {
+  console.error('FATAL: JWT_SECRET is not set in .env');
+  process.exit(1);
+}
 
 // ── create tables ──
 db.exec(`
@@ -58,9 +60,6 @@ catch (e) {}
 try { db.exec(`ALTER TABLE students ADD COLUMN photo TEXT`); }
 catch (e) {}
 
-try { db.exec(`ALTER TABLE sit_in_logs ADD COLUMN sessions_at_sitin INTEGER`); }
-catch (e) {}
-
 db.exec(`
   CREATE TABLE IF NOT EXISTS announcements (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +84,9 @@ db.exec(`
     feedback   TEXT
   )
 `);
+
+try { db.exec(`ALTER TABLE sit_in_logs ADD COLUMN sessions_at_sitin INTEGER`); }
+catch (e) {}
 
 // create default admin if none exists
 (async () => {
@@ -204,27 +206,6 @@ app.get('/api/profile', authMiddleware, (req, res) => {
 
 // ── STUDENT LOGOUT ──
 app.post('/api/logout', authMiddleware, (req, res) => {
-  const user = db.prepare('SELECT * FROM students WHERE id_number = ?').get(req.user.idNumber);
-  if (!user) return res.json({ success: false });
-
-  // only deduct session if student has an active sit-in
-  const activeSitIn = db.prepare(`
-    SELECT id FROM sit_in_logs
-    WHERE id_number = ? AND logout_time IS NULL
-    ORDER BY login_time DESC LIMIT 1
-  `).get(req.user.idNumber);
-
-  if (activeSitIn) {
-    const newSessions = Math.max(0, user.sessions - 1);
-    db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?')
-      .run(newSessions, req.user.idNumber);
-
-    db.prepare(`
-      UPDATE sit_in_logs SET logout_time = datetime('now','localtime')
-      WHERE id = ?
-    `).run(activeSitIn.id);
-  }
-
   res.json({ success: true });
 });
 

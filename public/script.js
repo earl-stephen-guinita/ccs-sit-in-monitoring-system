@@ -343,7 +343,6 @@ document.addEventListener('submit', function (e) {
     const idNumber  = document.getElementById('sitIdNumber').value;
     const lastName  = document.getElementById('sitLastName').value;
     const firstName = document.getElementById('sitFirstName').value;
-    const sessions  = document.getElementById('sitSessions').value;
     const purpose   = document.getElementById('sitPurpose').value;
     const lab       = document.getElementById('sitLab').value;
     const token     = localStorage.getItem('ccs_admin_token');
@@ -357,7 +356,7 @@ document.addEventListener('submit', function (e) {
     fetch('/api/admin/sit-in', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ idNumber, lastName, firstName, sessions, purpose, lab }),
+      body: JSON.stringify({ idNumber, lastName, firstName, purpose, lab }),
     })
       .then(res => res.json())
       .then(result => {
