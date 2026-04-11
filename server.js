@@ -55,6 +55,9 @@ catch (e) {}
 try { db.exec(`ALTER TABLE students ADD COLUMN photo TEXT`); }
 catch (e) {}
 
+try { db.exec(`ALTER TABLE sit_in_logs ADD COLUMN sessions_at_sitin INTEGER`); }
+catch (e) {}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS announcements (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -283,8 +286,8 @@ app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
     VALUES (?, ?, ?, ?, ?)`)
     .run(idNumber, lastName, firstName, purpose, lab);
 
-  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab) VALUES (?, ?, ?, ?, ?)`)
-    .run(idNumber, lastName, firstName, purpose, lab);
+  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, sessions_at_sitin) VALUES (?, ?, ?, ?, ?. ?)`)
+    .run(idNumber, lastName, firstName, purpose, lab, newSessions);
 
   res.json({ success: true, remainingSessions: newSessions });
 });
@@ -381,10 +384,8 @@ app.post('/api/admin/sit-out-log/:id', adminMiddleware, (req, res) => {
 // ── ADMIN: GET SIT-IN LOGS WITH SESSION ──
 app.get('/api/admin/sitin', adminMiddleware, (req, res) => {
   const logs = db.prepare(`
-    SELECT l.*, s.sessions
-    FROM sit_in_logs l
-    LEFT JOIN students s ON l.id_number = s.id_number
-    ORDER BY l.date DESC, l.login_time DESC
+    SELECT * FROM sit_in_logs
+    ORDER BY date DESC, login_time DESC
   `).all();
   res.json({ success: true, logs });
 });
