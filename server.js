@@ -1,3 +1,6 @@
+require('dotenv').config();
+
+console.log(process.env.JWT_SECRET);
 
 const express  = require('express');
 const Database = require('better-sqlite3');
@@ -8,7 +11,7 @@ const path     = require('path');
 
 const app    = express();
 const db     = new Database('database.db');
-const SECRET = 'ccs-sitin-secret-key-2026';
+const SECRET = process.env.JWT_SECRET;
 
 // ── create tables ──
 db.exec(`
@@ -86,10 +89,16 @@ db.exec(`
 // create default admin if none exists
 (async () => {
   const existing = db.prepare('SELECT id FROM admins WHERE username = ?').get('admin');
+
   if (!existing) {
-    const hashed = await bcrypt.hash('admin123', 10);
-    db.prepare('INSERT INTO admins (username, password) VALUES (?, ?)').run('admin', hashed);
-    console.log('Default admin created — username: admin, password: admin123');
+    const defaultPassword = process.env.ADMIN_PASSWORD || 'change_me';
+
+    const hashed = await bcrypt.hash(defaultPassword, 10);
+
+    db.prepare('INSERT INTO admins (username, password) VALUES (?, ?)')
+      .run('admin', hashed);
+
+    console.log(`Default admin created — username: admin, password: ${defaultPassword}`);
   }
 })();
 
@@ -286,7 +295,7 @@ app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
     VALUES (?, ?, ?, ?, ?)`)
     .run(idNumber, lastName, firstName, purpose, lab);
 
-  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, sessions_at_sitin) VALUES (?, ?, ?, ?, ?. ?)`)
+  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, sessions_at_sitin) VALUES (?, ?, ?, ?, ?, ?)`)
     .run(idNumber, lastName, firstName, purpose, lab, newSessions);
 
   res.json({ success: true, remainingSessions: newSessions });
