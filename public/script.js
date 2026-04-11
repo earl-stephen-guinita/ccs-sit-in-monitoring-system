@@ -422,7 +422,6 @@ function adminLogout() {
 window.addEventListener('DOMContentLoaded', function () {
   const adminToken = localStorage.getItem('ccs_admin_token');
   if (adminToken) {
-<<<<<<< Updated upstream
     document.getElementById('navHome').style.display = 'none';
     document.getElementById('navCommunity').style.display = 'none';
     document.getElementById('navAbout').style.display = 'none';
@@ -434,32 +433,6 @@ window.addEventListener('DOMContentLoaded', function () {
     setAdminNav('admin');
     showPage('admin');
   }  
-=======
-    // verify token is still valid before redirecting
-    fetch('/api/announcements-admin', {
-      headers: { 'Authorization': 'Bearer ' + adminToken }
-    })
-      .then(res => res.json())
-      .then(result => {
-        if (result.success) {
-          document.getElementById('navHome').style.display = 'none';
-          document.getElementById('navCommunity').style.display = 'none';
-          document.getElementById('navAbout').style.display = 'none';
-          document.getElementById('navRegisterItem').style.display = 'none';
-          document.getElementById('navLogin').style.display = 'none';
-          document.getElementById('navAdminPanel').style.display = '';
-          document.getElementById('navAdminSitin').style.display = '';
-          document.getElementById('navAdminLogout').style.display = '';
-          setAdminNav('admin');
-          showPage('admin');
-        } else {
-          // token expired or invalid — clear it
-          localStorage.removeItem('ccs_admin_token');
-        }
-      })
-      .catch(() => localStorage.removeItem('ccs_admin_token'));
-  }
->>>>>>> Stashed changes
 
   if (currentUser && getToken()) {
     updateNavForLoggedIn();
@@ -479,13 +452,9 @@ window.addEventListener('DOMContentLoaded', function () {
         img.src = ev.target.result;
         img.style.display = 'block';
         document.getElementById('profileAvatarInitials').style.display = 'none';
-<<<<<<< Updated upstream
         if (currentUser) {
           currentUser.photo = ev.target.result;
         }
-=======
-        if (currentUser) currentUser.photo = ev.target.result;
->>>>>>> Stashed changes
       };
       reader.readAsDataURL(file);
     });
@@ -1069,11 +1038,7 @@ function renderSitinTable() {
           <td>${r.first_name} ${r.last_name}</td>
           <td>${r.purpose}</td>
           <td>${r.lab}</td>
-<<<<<<< Updated upstream
           <td>${r.sessions !== null && r.sessions !== undefined ? r.sessions : '—'}</td>
-=======
-          <td>${r.sessions_at_sitin !== null && r.sessions_at_sitin !== undefined ? r.sessions_at_sitin : '—'}</td>
->>>>>>> Stashed changes
           <td>
             <span class="sitin-status ${isActive ? 'active' : 'done'}">
               ${isActive ? 'Active' : 'Done'}
