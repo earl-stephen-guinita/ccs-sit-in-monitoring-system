@@ -79,15 +79,10 @@ catch (e) {}
 // create default admin if none exists
 (async () => {
   const existing = db.prepare('SELECT id FROM admins WHERE username = ?').get('admin');
-
   if (!existing) {
     const defaultPassword = process.env.ADMIN_PASSWORD || 'change_me';
-
     const hashed = await bcrypt.hash(defaultPassword, 10);
-
-    db.prepare('INSERT INTO admins (username, password) VALUES (?, ?)')
-      .run('admin', hashed);
-
+    db.prepare('INSERT INTO admins (username, password) VALUES (?, ?)').run('admin', hashed);
     console.log(`Default admin created — username: admin, password: ${defaultPassword}`);
   }
 })();
@@ -155,7 +150,7 @@ app.post('/api/login', async (req, res) => {
     if (!match) return res.json({ success: false, message: 'Invalid credentials.' });
     const token = jwt.sign({ username: admin.username, isAdmin: true }, SECRET, { expiresIn: '8h' });
     return res.json({ success: true, token, isAdmin: true });
-  }  
+  }
 
   const user = db.prepare('SELECT * FROM students WHERE id_number = ?').get(idNumber);
   if (!user) return res.json({ success: false, message: 'Invalid ID number or password.' });
@@ -204,12 +199,11 @@ app.post('/api/profile/update', authMiddleware, async (req, res) => {
   const existing = db.prepare('SELECT * FROM students WHERE id_number = ?').get(idNumber);
   if (!existing) return res.json({ success: false, message: 'User not found.' });
 
-  // recalculate sessions if course changed
   const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
   let sessions = existing.sessions;
   if (course !== existing.course) {
     sessions = itCourses.includes(course) ? 30 : 15;
-  } 
+  }
 
   if (password && password.trim() !== '') {
     const hashed = await bcrypt.hash(password, 10);
@@ -243,7 +237,7 @@ app.get('/api/admin/search-student', adminMiddleware, (req, res) => {
 
 // ── ADMIN: CONFIRM SIT-IN ──
 app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
-  const { idNumber, lastName, firstName, purpose, lab } = req.body; // removed 'sessions' from destructure
+  const { idNumber, lastName, firstName, purpose, lab } = req.body;
 
   const student = db.prepare('SELECT * FROM students WHERE id_number = ?').get(idNumber);
   if (!student) return res.json({ success: false, message: 'Student not found.' });
@@ -252,14 +246,16 @@ app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
     return res.json({ success: false, message: 'Student has no remaining sessions.' });
   }
 
-  const existing = db.prepare(
+  const existingActive = db.prepare(
     'SELECT id FROM sit_in_logs WHERE id_number = ? AND logout_time IS NULL'
   ).get(idNumber);
-  if (existing) return res.json({ success: false, message: 'Student already has an active sit-in session.' });
+  if (existingActive) {
+    return res.json({ success: false, message: 'Student already has an active sit-in session.' });
+  }
 
   db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, sessions_at_sitin)
     VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(idNumber, lastName, firstName, purpose, lab, student.sessions); // use student.sessions directly
+    .run(idNumber, lastName, firstName, purpose, lab, student.sessions);
 
   res.json({ success: true, remainingSessions: student.sessions });
 });
@@ -338,12 +334,9 @@ app.get('/api/admin/history', adminMiddleware, (req, res) => {
   res.json({ success: true, logs });
 });
 
-// ── ADMIN: GET SIT-IN LOGS WITH SESSION ──
+// ── ADMIN: GET SIT-IN LOGS ──
 app.get('/api/admin/sitin', adminMiddleware, (req, res) => {
-  const logs = db.prepare(`
-    SELECT * FROM sit_in_logs
-    ORDER BY date DESC, login_time DESC
-  `).all();
+  const logs = db.prepare('SELECT * FROM sit_in_logs ORDER BY date DESC, login_time DESC').all();
   res.json({ success: true, logs });
 });
 
@@ -356,20 +349,101 @@ app.post('/api/admin/sitin-logout/:id', adminMiddleware, (req, res) => {
   const student = db.prepare('SELECT * FROM students WHERE id_number = ?').get(logEntry.id_number);
   if (student) {
     const newSessions = Math.max(0, student.sessions - 1);
-
-    // deduct session
     db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?')
       .run(newSessions, logEntry.id_number);
-
-    // ✅ update sessions_at_sitin to reflect post-deduction value
     db.prepare('UPDATE sit_in_logs SET sessions_at_sitin = ? WHERE id = ?')
       .run(newSessions, req.params.id);
   }
 
-  // set logout time
   db.prepare(`UPDATE sit_in_logs SET logout_time = datetime('now','localtime') WHERE id = ?`)
     .run(req.params.id);
 
+  res.json({ success: true });
+});
+
+// ── ADMIN: GET ALL STUDENTS ──
+app.get('/api/admin/students', adminMiddleware, (req, res) => {
+  const students = db.prepare(`
+    SELECT id_number, last_name, first_name, middle_name, course, year_level, email, address, sessions
+    FROM students ORDER BY last_name ASC, first_name ASC
+  `).all();
+  res.json({ success: true, students });
+});
+
+// ── ADMIN: ADD STUDENT ──
+app.post('/api/admin/students', adminMiddleware, async (req, res) => {
+  const { idNumber, firstName, lastName, middleName, course, level, email, address, password } = req.body;
+
+  if (!idNumber || !firstName || !lastName || !course || !level || !email || !address || !password) {
+    return res.json({ success: false, message: 'All required fields must be filled.' });
+  }
+
+  const existing = db.prepare('SELECT id FROM students WHERE id_number = ?').get(idNumber);
+  if (existing) return res.json({ success: false, message: 'ID number already registered.' });
+
+  const hashed = await bcrypt.hash(password, 10);
+  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+  const sessions = itCourses.includes(course) ? 30 : 15;
+
+  db.prepare(`
+    INSERT INTO students (id_number, last_name, first_name, middle_name, course, year_level, email, address, password, sessions)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(idNumber, lastName, firstName, middleName || '', course, level, email, address, hashed, sessions);
+
+  res.json({ success: true });
+});
+
+// ── ADMIN: EDIT STUDENT ──
+app.put('/api/admin/students/:idNumber', adminMiddleware, async (req, res) => {
+  const { idNumber } = req.params;
+  const { firstName, lastName, middleName, course, level, email, address, password } = req.body;
+
+  const existing = db.prepare('SELECT * FROM students WHERE id_number = ?').get(idNumber);
+  if (!existing) return res.json({ success: false, message: 'Student not found.' });
+
+  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+  let sessions = existing.sessions;
+  if (course !== existing.course) {
+    sessions = itCourses.includes(course) ? 30 : 15;
+  }
+
+  if (password && password.trim() !== '') {
+    const hashed = await bcrypt.hash(password, 10);
+    db.prepare(`UPDATE students SET last_name=?, first_name=?, middle_name=?,
+      course=?, year_level=?, email=?, address=?, password=?, sessions=? WHERE id_number=?`)
+      .run(lastName, firstName, middleName || '', course, level, email, address, hashed, sessions, idNumber);
+  } else {
+    db.prepare(`UPDATE students SET last_name=?, first_name=?, middle_name=?,
+      course=?, year_level=?, email=?, address=?, sessions=? WHERE id_number=?`)
+      .run(lastName, firstName, middleName || '', course, level, email, address, sessions, idNumber);
+  }
+
+  res.json({ success: true, sessions });
+});
+
+// ── ADMIN: DELETE STUDENT ──
+app.delete('/api/admin/students/:idNumber', adminMiddleware, (req, res) => {
+  const { idNumber } = req.params;
+  const existing = db.prepare('SELECT id FROM students WHERE id_number = ?').get(idNumber);
+  if (!existing) return res.json({ success: false, message: 'Student not found.' });
+
+  db.prepare('DELETE FROM students WHERE id_number = ?').run(idNumber);
+  res.json({ success: true });
+});
+
+// ── ADMIN: RESET ALL SESSIONS ──
+app.post('/api/admin/students/reset-sessions', adminMiddleware, (req, res) => {
+  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+  // reset each student to their course-appropriate default
+  const students = db.prepare('SELECT id_number, course FROM students').all();
+  const resetStmt = db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?');
+  const resetAll = db.transaction(() => {
+    for (const s of students) {
+      const def = itCourses.includes(s.course) ? 30 : 15;
+      resetStmt.run(def, s.id_number);
+    }
+  });
+  resetAll();
   res.json({ success: true });
 });
 

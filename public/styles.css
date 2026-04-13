@@ -1096,3 +1096,118 @@ html, body {
 }
 
 .btn-logout-sitin:hover { background: #ffd6d6; }
+
+/* ---------- students page ---------- */
+#page-students.active { display: flex !important; flex-direction: column; min-height: 100vh; }
+ 
+.history-card-header {
+  background: linear-gradient(135deg, #2d0f5e, #6b2fa0);
+  padding: 1rem 1.5rem;
+}
+ 
+/* student action buttons in header */
+.btn-student-action {
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+ 
+.btn-add-student {
+  background: linear-gradient(135deg, #f5a623, #e8920d);
+  color: #1a0a35;
+}
+.btn-add-student:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 166, 35, 0.4);
+}
+ 
+.btn-reset-sessions {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.3);
+}
+.btn-reset-sessions:hover {
+  background: rgba(255,255,255,0.25);
+  transform: translateY(-1px);
+}
+ 
+/* row action buttons */
+.btn-student-edit {
+  background: #f0e6ff;
+  color: #4a1d7e;
+  border: none;
+  border-radius: 6px;
+  padding: 0.22rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-student-edit:hover { background: #e0ccff; }
+ 
+.btn-student-delete {
+  background: #fff0f0;
+  color: #dc3545;
+  border: 1px solid #ffc5c5;
+  border-radius: 6px;
+  padding: 0.22rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-student-delete:hover { background: #ffd6d6; }
+ 
+/* session mini bar inside table */
+.student-session-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 100px;
+}
+ 
+.student-session-count {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #2d0f5e;
+}
+ 
+.student-session-bar-wrap {
+  width: 100%;
+  height: 5px;
+  background: #e8d8ff;
+  border-radius: 3px;
+  overflow: hidden;
+}
+ 
+.student-session-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+ 
+/* student modal form controls */
+#studentModal .input-group-text {
+  background: #f0e6ff;
+  border-color: #d4b5ff;
+  color: #4a1d7e;
+}
+#studentModal .form-control,
+#studentModal .form-select {
+  border-color: #d4b5ff;
+}
+#studentModal .form-control:focus,
+#studentModal .form-select:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 0.2rem rgba(124,58,237,0.18);
+}
+ 

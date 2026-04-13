@@ -92,6 +92,7 @@ const PAGE_TITLES = {
   admin:        'CCS | Admin Panel',
   history:      'CCS | History',
   sitin:        'CCS | Current Sit-In',
+  students:     'CCS | Students',
 };
 
 /* ── page switcher ── */
@@ -106,13 +107,14 @@ function showPage(pageKey) {
     if (pageKey === 'admin') loadAdminAnnouncements();
     if (pageKey === 'history') loadHistory();
     if (pageKey === 'sitin') loadSitin();
+    if (pageKey === 'students') loadStudents();
 
     if (pageKey !== 'profile') {
       const editMode = document.getElementById('profileEditMode');
       if (editMode && editMode.style.display !== 'none') {
         toggleEditMode(false);
       }
-    }    
+    }
   }
 }
 
@@ -218,14 +220,7 @@ document.addEventListener('submit', function (e) {
         if (result.success) {
           if (result.isAdmin) {
             localStorage.setItem('ccs_admin_token', result.token);
-            document.getElementById('navHome').style.display = 'none';
-            document.getElementById('navCommunity').style.display = 'none';
-            document.getElementById('navAbout').style.display = 'none';
-            document.getElementById('navRegisterItem').style.display = 'none';
-            document.getElementById('navLogin').style.display = 'none';
-            document.getElementById('navAdminPanel').style.display = '';
-            document.getElementById('navAdminSitin').style.display = '';
-            document.getElementById('navAdminLogout').style.display = '';
+            showAdminNav();
             setAdminNav('admin');
             showPage('admin');
           } else {
@@ -266,9 +261,7 @@ document.addEventListener('submit', function (e) {
           currentUser = { ...currentUser, ...updated, sessions: result.sessions ?? currentUser.sessions };
           saveSession(getToken(), currentUser);
           updateNavForLoggedIn();
-
           document.getElementById('editProfileForm').dataset.originalPhoto = currentUser.photo || '';
-
           loadProfile();
           toggleEditMode(false);
           alert('Profile updated successfully!');
@@ -372,7 +365,20 @@ document.addEventListener('submit', function (e) {
   }
 });
 
+/* ── show admin nav items ── */
+function showAdminNav() {
+  document.getElementById('navHome').style.display = 'none';
+  document.getElementById('navCommunity').style.display = 'none';
+  document.getElementById('navAbout').style.display = 'none';
+  document.getElementById('navRegisterItem').style.display = 'none';
+  document.getElementById('navLogin').style.display = 'none';
+  document.getElementById('navAdminPanel').style.display = '';
+  document.getElementById('navAdminStudents').style.display = '';
+  document.getElementById('navAdminSitin').style.display = '';
+  document.getElementById('navAdminLogout').style.display = '';
+}
 
+/* ── update nav for logged-in student ── */
 function updateNavForLoggedIn() {
   document.getElementById('navLogin').style.display = 'none';
   document.getElementById('navRegisterItem').style.display = 'none';
@@ -396,9 +402,9 @@ function logoutUser() {
       document.getElementById('navAbout').style.display = '';
       document.getElementById('navProfileItem').style.display = 'none';
       document.getElementById('navLogoutItem').style.display = 'none';
+      document.getElementById('navHistoryItem').style.display = 'none';
       document.getElementById('heroSection').style.display = '';
       document.getElementById('dashboardSection').style.display = 'none';
-      document.getElementById('navHistoryItem').style.display = 'none';
       showPage('home');
     });
 }
@@ -408,6 +414,7 @@ function adminLogout() {
   localStorage.removeItem('ccs_admin_token');
   document.getElementById('navHome').style.display = '';
   document.getElementById('navAdminPanel').style.display = 'none';
+  document.getElementById('navAdminStudents').style.display = 'none';
   document.getElementById('navAdminSitin').style.display = 'none';
   document.getElementById('navAdminLogout').style.display = 'none';
   document.getElementById('navCommunity').style.display = '';
@@ -421,25 +428,16 @@ function adminLogout() {
 window.addEventListener('DOMContentLoaded', function () {
   const adminToken = localStorage.getItem('ccs_admin_token');
   if (adminToken) {
-    // verify token is still valid before redirecting
     fetch('/api/announcements-admin', {
       headers: { 'Authorization': 'Bearer ' + adminToken }
     })
       .then(res => res.json())
       .then(result => {
         if (result.success) {
-          document.getElementById('navHome').style.display = 'none';
-          document.getElementById('navCommunity').style.display = 'none';
-          document.getElementById('navAbout').style.display = 'none';
-          document.getElementById('navRegisterItem').style.display = 'none';
-          document.getElementById('navLogin').style.display = 'none';
-          document.getElementById('navAdminPanel').style.display = '';
-          document.getElementById('navAdminSitin').style.display = '';
-          document.getElementById('navAdminLogout').style.display = '';
+          showAdminNav();
           setAdminNav('admin');
           showPage('admin');
         } else {
-          // token expired or invalid — clear it
           localStorage.removeItem('ccs_admin_token');
         }
       })
@@ -592,7 +590,6 @@ function toggleEditMode(on) {
     document.getElementById('eAddress').value    = currentUser.address;
     document.getElementById('ePassword').value   = '';
   } else {
-    // ← restore original photo if cancelled
     const originalPhoto = document.getElementById('editProfileForm').dataset.originalPhoto;
     if (originalPhoto !== undefined && currentUser) {
       currentUser.photo = originalPhoto || null;
@@ -616,17 +613,14 @@ function toggleEditMode(on) {
 function loadDashboard() {
   if (!currentUser) return;
 
-  // fetch fresh session count from server first, then render
   authFetch('/api/profile')
     .then(res => res.json())
     .then(result => {
       if (result.success) {
-        // update session count from server (may have changed since last login)
         currentUser.sessions = result.user.sessions;
         saveSession(getToken(), currentUser);
       }
 
-      // render dashboard (uses updated currentUser)
       document.getElementById('dashWelcomeName').textContent = currentUser.firstName;
 
       const img = document.getElementById('dashPhotoImg');
@@ -658,7 +652,6 @@ function loadDashboard() {
         dotsEl.appendChild(dot);
       }
 
-      // fetch announcements
       authFetch('/api/announcements')
         .then(res => res.json())
         .then(result => {
@@ -677,12 +670,11 @@ function loadDashboard() {
         })
         .catch(() => {});
 
-      // hardcoded rules
       document.getElementById('dashRulesContent').innerHTML = `
         <div class="dash-rules-content">
           <div style="text-align:center; margin-bottom:0.75rem; line-height:1.6;">
             <strong>University of Cebu</strong><br>
-            <strong>COLLEGE OF INFORMATION & COMPUTER STUDIES</strong>
+            <strong>COLLEGE OF INFORMATION &amp; COMPUTER STUDIES</strong>
           </div>
           <strong>LABORATORY RULES AND REGULATIONS</strong>
           <div style="margin-top:0.4rem; margin-bottom:0.4rem;">To avoid embarrassment and maintain camaraderie with your friends and superiors at our laboratories, please observe the following:</div>
@@ -699,7 +691,6 @@ function loadDashboard() {
       `;
     })
     .catch(() => {
-      // if fetch fails, still render with cached data
       document.getElementById('dashWelcomeName').textContent = currentUser.firstName;
     });
 }
@@ -814,7 +805,6 @@ function renderHistoryTable() {
   const pageSize  = parseInt(document.getElementById('historyPageSize').value);
   const search    = document.getElementById('historySearch').value.toLowerCase();
 
-  // filter
   let filtered = historyData.filter(r => {
     const name = r.first_name + ' ' + r.last_name;
     return (
@@ -826,7 +816,6 @@ function renderHistoryTable() {
     );
   });
 
-  // sort
   filtered.sort((a, b) => {
     let valA, valB;
     if (historySortKey === 'name') {
@@ -841,7 +830,6 @@ function renderHistoryTable() {
     return 0;
   });
 
-  // paginate
   const total   = filtered.length;
   const pages   = Math.max(1, Math.ceil(total / pageSize));
   if (historyPage > pages) historyPage = pages;
@@ -849,15 +837,13 @@ function renderHistoryTable() {
   const end     = Math.min(start + pageSize, total);
   const paged   = filtered.slice(start, end);
 
-  // update sort icons
-  document.querySelectorAll('.sort-btns').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('#historyTable .sort-btns').forEach(el => el.classList.remove('active'));
   const ths = document.querySelectorAll('#historyTable th');
   const keys = ['id_number', 'name', 'purpose', 'lab', 'login_time', 'logout_time', 'date'];
   keys.forEach((k, i) => {
     if (k === historySortKey) ths[i].querySelector('.sort-btns').classList.add('active');
   });
 
-  // render rows
   const tbody = document.getElementById('historyTableBody');
   if (paged.length === 0) {
     tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No records found.</td></tr>';
@@ -882,36 +868,11 @@ function renderHistoryTable() {
     `).join('');
   }
 
-  // update info
   document.getElementById('historyInfo').textContent =
     total === 0 ? 'Showing 0 to 0 of 0 entries'
     : `Showing ${start + 1} to ${end} of ${total} entries`;
 
-  // render pagination
-  const pag = document.getElementById('historyPagination');
-  pag.innerHTML = '';
-  const mkBtn = (label, page, disabled, active) => {
-    const btn = document.createElement('button');
-    btn.className = 'page-btn' + (active ? ' active' : '');
-    btn.innerHTML = label;
-    btn.disabled = disabled;
-    btn.onclick = () => { historyPage = page; renderHistoryTable(); };
-    pag.appendChild(btn);
-  };
-  mkBtn('&laquo;', 1, historyPage === 1, false);
-  mkBtn('&lsaquo;', historyPage - 1, historyPage === 1, false);
-  for (let i = 1; i <= pages; i++) {
-    if (pages <= 5 || Math.abs(i - historyPage) <= 1 || i === 1 || i === pages) {
-      mkBtn(i, i, false, i === historyPage);
-    } else if (Math.abs(i - historyPage) === 2) {
-      const dots = document.createElement('span');
-      dots.textContent = '…';
-      dots.style.cssText = 'padding:0.25rem 0.4rem; color:#aaa; font-size:0.82rem;';
-      pag.appendChild(dots);
-    }
-  }
-  mkBtn('&rsaquo;', historyPage + 1, historyPage === pages, false);
-  mkBtn('&raquo;', pages, historyPage === pages, false);
+  renderPagination('historyPagination', historyPage, pages, (p) => { historyPage = p; renderHistoryTable(); });
 }
 
 /* ── open feedback modal ── */
@@ -953,6 +914,7 @@ let sitinFilter = 'all';
 /* ── set admin nav active ── */
 function setAdminNav(page) {
   document.getElementById('navAdminPanel').classList.toggle('active', page === 'admin');
+  document.getElementById('navAdminStudents').classList.toggle('active', page === 'students');
   document.getElementById('navAdminSitin').classList.toggle('active', page === 'sitin');
 }
 
@@ -998,12 +960,10 @@ function renderSitinTable() {
   const pageSize = parseInt(document.getElementById('sitinPageSize').value);
   const search   = document.getElementById('sitinSearch').value.toLowerCase();
 
-  // filter by status
   let filtered = sitinData.filter(r => {
     const isActive = !r.logout_time;
     if (sitinFilter === 'active' && !isActive) return false;
     if (sitinFilter === 'done' && isActive) return false;
-
     const name = r.first_name + ' ' + r.last_name;
     return (
       String(r.id).toLowerCase().includes(search) ||
@@ -1014,7 +974,6 @@ function renderSitinTable() {
     );
   });
 
-  // sort
   filtered.sort((a, b) => {
     let valA, valB;
     if (sitinSortKey === 'name') {
@@ -1032,7 +991,6 @@ function renderSitinTable() {
     return 0;
   });
 
-  // paginate
   const total  = filtered.length;
   const pages  = Math.max(1, Math.ceil(total / pageSize));
   if (sitinPage > pages) sitinPage = pages;
@@ -1040,7 +998,6 @@ function renderSitinTable() {
   const end    = Math.min(start + pageSize, total);
   const paged  = filtered.slice(start, end);
 
-  // sort icons
   document.querySelectorAll('#sitinTable .sort-btns').forEach(el => el.classList.remove('active'));
   const ths  = document.querySelectorAll('#sitinTable th');
   const keys = ['id', 'id_number', 'name', 'purpose', 'lab', 'sessions', 'status'];
@@ -1048,7 +1005,6 @@ function renderSitinTable() {
     if (k === sitinSortKey) ths[i].querySelector('.sort-btns').classList.add('active');
   });
 
-  // render rows
   const tbody = document.getElementById('sitinTableBody');
   if (paged.length === 0) {
     tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No records found.</td></tr>';
@@ -1080,36 +1036,11 @@ function renderSitinTable() {
     }).join('');
   }
 
-  // info
   document.getElementById('sitinInfo').textContent =
     total === 0 ? 'Showing 0 to 0 of 0 entries'
     : `Showing ${start + 1} to ${end} of ${total} entries`;
 
-  // pagination
-  const pag = document.getElementById('sitinPagination');
-  pag.innerHTML = '';
-  const mkBtn = (label, page, disabled, active) => {
-    const btn = document.createElement('button');
-    btn.className = 'page-btn' + (active ? ' active' : '');
-    btn.innerHTML = label;
-    btn.disabled = disabled;
-    btn.onclick = () => { sitinPage = page; renderSitinTable(); };
-    pag.appendChild(btn);
-  };
-  mkBtn('&laquo;', 1, sitinPage === 1, false);
-  mkBtn('&lsaquo;', sitinPage - 1, sitinPage === 1, false);
-  for (let i = 1; i <= pages; i++) {
-    if (pages <= 5 || Math.abs(i - sitinPage) <= 1 || i === 1 || i === pages) {
-      mkBtn(i, i, false, i === sitinPage);
-    } else if (Math.abs(i - sitinPage) === 2) {
-      const dots = document.createElement('span');
-      dots.textContent = '…';
-      dots.style.cssText = 'padding:0.25rem 0.4rem; color:#aaa; font-size:0.82rem;';
-      pag.appendChild(dots);
-    }
-  }
-  mkBtn('&rsaquo;', sitinPage + 1, sitinPage === pages, false);
-  mkBtn('&raquo;', pages, sitinPage === pages, false);
+  renderPagination('sitinPagination', sitinPage, pages, (p) => { sitinPage = p; renderSitinTable(); });
 }
 
 /* ── admin logout student from sit-in ── */
@@ -1129,4 +1060,311 @@ function adminLogoutSitin(id) {
       }
     })
     .catch(() => alert('Could not reach the server.'));
+}
+
+/* ══════════════════════════════════════════════════════
+   STUDENTS PAGE
+══════════════════════════════════════════════════════ */
+
+let studentsData    = [];
+let studentsSortKey = 'name';
+let studentsSortDir = 'asc';
+let studentsPage    = 1;
+
+/* ── load students ── */
+function loadStudents() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/students', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      studentsData = result.students || [];
+      studentsPage = 1;
+      renderStudentsTable();
+    })
+    .catch(() => {});
+}
+
+/* ── sort students ── */
+function sortStudents(key) {
+  if (studentsSortKey === key) {
+    studentsSortDir = studentsSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    studentsSortKey = key;
+    studentsSortDir = 'asc';
+  }
+  studentsPage = 1;
+  renderStudentsTable();
+}
+
+/* ── render students table ── */
+function renderStudentsTable() {
+  const pageSize = parseInt(document.getElementById('studentsPageSize').value);
+  const search   = document.getElementById('studentsSearch').value.toLowerCase();
+
+  let filtered = studentsData.filter(s => {
+    const name = s.first_name + ' ' + s.last_name;
+    return (
+      s.id_number.toLowerCase().includes(search) ||
+      name.toLowerCase().includes(search) ||
+      s.course.toLowerCase().includes(search) ||
+      s.year_level.toLowerCase().includes(search)
+    );
+  });
+
+  filtered.sort((a, b) => {
+    let valA, valB;
+    if (studentsSortKey === 'name') {
+      valA = a.last_name + ' ' + a.first_name;
+      valB = b.last_name + ' ' + b.first_name;
+    } else if (studentsSortKey === 'sessions') {
+      valA = a.sessions;
+      valB = b.sessions;
+    } else {
+      valA = String(a[studentsSortKey] || '');
+      valB = String(b[studentsSortKey] || '');
+    }
+    if (valA < valB) return studentsSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return studentsSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const total  = filtered.length;
+  const pages  = Math.max(1, Math.ceil(total / pageSize));
+  if (studentsPage > pages) studentsPage = pages;
+  const start  = (studentsPage - 1) * pageSize;
+  const end    = Math.min(start + pageSize, total);
+  const paged  = filtered.slice(start, end);
+
+  // update sort icons — only 5 sortable columns (Action col has no sort-btns)
+  document.querySelectorAll('#studentsTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#studentsTable th');
+  const keys = ['id_number', 'name', 'year_level', 'course', 'sessions'];
+  keys.forEach((k, i) => {
+    if (k === studentsSortKey && ths[i]) ths[i].querySelector('.sort-btns').classList.add('active');
+  });
+
+  const tbody = document.getElementById('studentsTableBody');
+  if (paged.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No students found.</td></tr>';
+  } else {
+    tbody.innerHTML = paged.map(s => {
+      const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+      const total_s   = itCourses.includes(s.course) ? 30 : 15;
+      const pct       = Math.round((s.sessions / total_s) * 100);
+      const barColor  = pct > 50 ? '#198754' : pct > 20 ? '#f5a623' : '#dc3545';
+      return `
+        <tr>
+          <td>${s.id_number}</td>
+          <td>${s.last_name}, ${s.first_name}${s.middle_name ? ' ' + s.middle_name : ''}</td>
+          <td>${s.year_level}</td>
+          <td>${s.course}</td>
+          <td>
+            <div class="student-session-cell">
+              <span class="student-session-count">${s.sessions} / ${total_s}</span>
+              <div class="student-session-bar-wrap">
+                <div class="student-session-bar-fill" style="width:${pct}%; background:${barColor};"></div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="d-flex gap-1">
+              <button class="btn-student-edit" onclick='openEditStudentModal(${JSON.stringify(s)})'>
+                <i class="bi bi-pencil-fill me-1"></i>Edit
+              </button>
+              <button class="btn-student-delete" onclick="deleteStudent('${s.id_number}')">
+                <i class="bi bi-trash-fill me-1"></i>Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('studentsInfo').textContent =
+    total === 0 ? 'Showing 0 to 0 of 0 entries'
+    : `Showing ${start + 1} to ${end} of ${total} entries`;
+
+  renderPagination('studentsPagination', studentsPage, pages, (p) => { studentsPage = p; renderStudentsTable(); });
+}
+
+/* ── open add student modal ── */
+function openAddStudentModal() {
+  document.getElementById('studentModalTitle').innerHTML = '<i class="bi bi-person-plus-fill me-2"></i>Add Student';
+  document.getElementById('studentModalSaveLabel').textContent = 'Add Student';
+  document.getElementById('sModalMode').value = 'add';
+
+  document.getElementById('sModalIdNumber').value      = '';
+  document.getElementById('sModalIdNumber').readOnly   = false;
+  document.getElementById('sModalIdNumber').style.background = '';
+  document.getElementById('sModalIdNumber').style.cursor     = '';
+  document.getElementById('sModalIdNote').style.display      = 'none';
+
+  document.getElementById('sModalLastName').value    = '';
+  document.getElementById('sModalFirstName').value   = '';
+  document.getElementById('sModalMiddleName').value  = '';
+  document.getElementById('sModalCourse').value      = '';
+  document.getElementById('sModalLevel').value       = '';
+  document.getElementById('sModalEmail').value       = '';
+  document.getElementById('sModalAddress').value     = '';
+  document.getElementById('sModalPassword').value    = '';
+
+  document.getElementById('sModalPasswordLabel').innerHTML = 'Password <span class="text-danger">*</span>';
+  document.getElementById('sModalPasswordNote').style.display = 'none';
+  document.getElementById('studentModalError').style.display  = 'none';
+
+  new bootstrap.Modal(document.getElementById('studentModal')).show();
+}
+
+/* ── open edit student modal ── */
+function openEditStudentModal(s) {
+  document.getElementById('studentModalTitle').innerHTML = '<i class="bi bi-pencil-fill me-2"></i>Edit Student';
+  document.getElementById('studentModalSaveLabel').textContent = 'Save Changes';
+  document.getElementById('sModalMode').value = 'edit';
+
+  document.getElementById('sModalIdNumber').value      = s.id_number;
+  document.getElementById('sModalIdNumber').readOnly   = true;
+  document.getElementById('sModalIdNumber').style.background = '#f0e6ff';
+  document.getElementById('sModalIdNumber').style.cursor     = 'not-allowed';
+  document.getElementById('sModalIdNote').style.display      = '';
+
+  document.getElementById('sModalLastName').value    = s.last_name;
+  document.getElementById('sModalFirstName').value   = s.first_name;
+  document.getElementById('sModalMiddleName').value  = s.middle_name || '';
+  document.getElementById('sModalCourse').value      = s.course;
+  document.getElementById('sModalLevel').value       = s.year_level;
+  document.getElementById('sModalEmail').value       = s.email;
+  document.getElementById('sModalAddress').value     = s.address;
+  document.getElementById('sModalPassword').value    = '';
+
+  document.getElementById('sModalPasswordLabel').innerHTML = 'New Password';
+  document.getElementById('sModalPasswordNote').style.display = '';
+  document.getElementById('studentModalError').style.display  = 'none';
+
+  new bootstrap.Modal(document.getElementById('studentModal')).show();
+}
+
+/* ── submit student modal (add or edit) ── */
+function submitStudentModal() {
+  const mode      = document.getElementById('sModalMode').value;
+  const idNumber  = document.getElementById('sModalIdNumber').value.trim();
+  const lastName  = document.getElementById('sModalLastName').value.trim();
+  const firstName = document.getElementById('sModalFirstName').value.trim();
+  const middleName = document.getElementById('sModalMiddleName').value.trim();
+  const course    = document.getElementById('sModalCourse').value;
+  const level     = document.getElementById('sModalLevel').value;
+  const email     = document.getElementById('sModalEmail').value.trim();
+  const address   = document.getElementById('sModalAddress').value.trim();
+  const password  = document.getElementById('sModalPassword').value;
+  const errorEl   = document.getElementById('studentModalError');
+  const token     = localStorage.getItem('ccs_admin_token');
+
+  // basic validation
+  if (!idNumber || !lastName || !firstName || !course || !level || !email || !address) {
+    errorEl.textContent = 'Please fill in all required fields.';
+    errorEl.style.display = '';
+    return;
+  }
+  if (mode === 'add' && !password) {
+    errorEl.textContent = 'Password is required when adding a student.';
+    errorEl.style.display = '';
+    return;
+  }
+
+  errorEl.style.display = 'none';
+
+  const body = { firstName, lastName, middleName, course, level, email, address, password };
+
+  const url    = mode === 'add' ? '/api/admin/students' : '/api/admin/students/' + idNumber;
+  const method = mode === 'add' ? 'POST' : 'PUT';
+  if (mode === 'add') body.idNumber = idNumber;
+
+  fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify(body),
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        bootstrap.Modal.getInstance(document.getElementById('studentModal')).hide();
+        loadStudents();
+      } else {
+        errorEl.textContent = result.message || 'Operation failed.';
+        errorEl.style.display = '';
+      }
+    })
+    .catch(() => {
+      errorEl.textContent = 'Could not reach the server.';
+      errorEl.style.display = '';
+    });
+}
+
+/* ── delete student ── */
+function deleteStudent(idNumber) {
+  if (!confirm('Delete student ' + idNumber + '? This cannot be undone.')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/students/' + idNumber, {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        loadStudents();
+      } else {
+        alert(result.message || 'Failed to delete student.');
+      }
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+
+/* ── reset all sessions ── */
+function resetAllSessions() {
+  if (!confirm('Reset all students\' sessions to their course defaults? This cannot be undone.')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/students/reset-sessions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        alert('All sessions have been reset.');
+        loadStudents();
+      } else {
+        alert(result.message || 'Failed to reset sessions.');
+      }
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+
+/* ── shared pagination renderer ── */
+function renderPagination(containerId, currentPage, pages, onPageClick) {
+  const pag = document.getElementById(containerId);
+  pag.innerHTML = '';
+  const mkBtn = (label, page, disabled, active) => {
+    const btn = document.createElement('button');
+    btn.className = 'page-btn' + (active ? ' active' : '');
+    btn.innerHTML = label;
+    btn.disabled = disabled;
+    btn.onclick = () => onPageClick(page);
+    pag.appendChild(btn);
+  };
+  mkBtn('&laquo;', 1, currentPage === 1, false);
+  mkBtn('&lsaquo;', currentPage - 1, currentPage === 1, false);
+  for (let i = 1; i <= pages; i++) {
+    if (pages <= 5 || Math.abs(i - currentPage) <= 1 || i === 1 || i === pages) {
+      mkBtn(i, i, false, i === currentPage);
+    } else if (Math.abs(i - currentPage) === 2) {
+      const dots = document.createElement('span');
+      dots.textContent = '…';
+      dots.style.cssText = 'padding:0.25rem 0.4rem; color:#aaa; font-size:0.82rem;';
+      pag.appendChild(dots);
+    }
+  }
+  mkBtn('&rsaquo;', currentPage + 1, currentPage === pages, false);
+  mkBtn('&raquo;', pages, currentPage === pages, false);
 }
