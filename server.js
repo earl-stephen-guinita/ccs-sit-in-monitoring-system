@@ -268,9 +268,38 @@ app.get('/api/history', authMiddleware, (req, res) => {
   res.json({ success: true, logs: db.prepare('SELECT * FROM sit_in_logs WHERE id_number = ? ORDER BY date DESC, login_time DESC').all(req.user.idNumber) });
 });
 
+// ── PROFANITY FILTER ──
+const BANNED_WORDS = [
+  'fuck','shit','bitch','asshole','bastard','crap','piss','dick','cock',
+  'pussy','cunt','whore','slut','faggot','nigger','nigga','retard','motherfucker',
+  'bullshit','jackass','dumbass','ass','puta','putang','putangina','gago','bobo',
+  'tanga','ulol','hindot','pakyu','pakingshet','leche','kupal','tarantado',
+  'hayop','bwisit','lintik','supot','bilat','betlog','burat','suso','kantot',
+  'tangina','shet','wtf','kys',
+];
+
+function containsProfanity(text) {
+  if (!text) return false;
+  const normalized = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  const words = normalized.split(/\s+/);
+  for (const word of words) {
+    if (BANNED_WORDS.includes(word)) return true;
+    for (const banned of BANNED_WORDS) {
+      if (banned.length >= 5 && word.includes(banned)) return true;
+    }
+  }
+  return false;
+}
+
 // ── STUDENT: SUBMIT FEEDBACK ──
 app.post('/api/history/feedback/:id', authMiddleware, (req, res) => {
-  db.prepare('UPDATE sit_in_logs SET feedback = ? WHERE id = ? AND id_number = ?').run(req.body.feedback, req.params.id, req.user.idNumber);
+  const { feedback } = req.body;
+  if (!feedback || !feedback.trim())
+    return res.json({ success: false, message: 'Feedback cannot be empty.' });
+  if (containsProfanity(feedback))
+    return res.json({ success: false, message: 'Your feedback contains inappropriate language. Please keep it respectful.' });
+  db.prepare('UPDATE sit_in_logs SET feedback = ? WHERE id = ? AND id_number = ?')
+    .run(feedback.trim(), req.params.id, req.user.idNumber);
   res.json({ success: true });
 });
 

@@ -889,11 +889,52 @@ function openFeedback(logId) {
   new bootstrap.Modal(document.getElementById('feedbackModal')).show();
 }
 
+/* ── profanity word list (client-side pre-check) ── */
+const CLIENT_BANNED = [
+  'fuck','shit','bitch','asshole','bastard','crap','piss','dick','cock',
+  'pussy','cunt','whore','slut','faggot','nigger','nigga','retard','motherfucker',
+  'bullshit','jackass','dumbass','ass','puta','putang','putangina','gago','bobo',
+  'tanga','ulol','hindot','pakyu','pakingshet','leche','kupal','tarantado',
+  'hayop','bwisit','lintik','supot','bilat','betlog','burat','suso','kantot',
+  'tangina','shet','wtf','kys',
+];
+
+function clientHasProfanity(text) {
+  if (!text) return false;
+  const normalized = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  const words = normalized.split(/\s+/);
+  for (const word of words) {
+    if (CLIENT_BANNED.includes(word)) return true;
+    for (const banned of CLIENT_BANNED) {
+      if (banned.length >= 5 && word.includes(banned)) return true;
+    }
+  }
+  return false;
+}
+
 /* ── submit feedback ── */
 function submitFeedback() {
   const id       = document.getElementById('feedbackLogId').value;
   const feedback = document.getElementById('feedbackText').value.trim();
   if (!feedback) { alert('Please write your feedback first.'); return; }
+
+  if (clientHasProfanity(feedback)) {
+    document.getElementById('feedbackText').classList.add('is-invalid');
+    const existing = document.getElementById('feedbackProfanityMsg');
+    if (!existing) {
+      const msg = document.createElement('div');
+      msg.id = 'feedbackProfanityMsg';
+      msg.className = 'invalid-feedback d-block';
+      msg.textContent = '⚠ Your feedback contains inappropriate language. Please keep it respectful.';
+      document.getElementById('feedbackText').insertAdjacentElement('afterend', msg);
+    }
+    return;
+  }
+
+  // clear any previous error
+  document.getElementById('feedbackText').classList.remove('is-invalid');
+  const errMsg = document.getElementById('feedbackProfanityMsg');
+  if (errMsg) errMsg.remove();
 
   authFetch('/api/history/feedback/' + id, {
     method: 'POST',
