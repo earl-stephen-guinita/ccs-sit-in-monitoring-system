@@ -93,6 +93,7 @@ const PAGE_TITLES = {
   history:      'CCS | History',
   sitin:        'CCS | Current Sit-In',
   students:     'CCS | Students',
+  adminreservations: 'CCS | Reservations',
 };
 
 /* ── page switcher ── */
@@ -109,6 +110,7 @@ function showPage(pageKey) {
     if (pageKey === 'sitin') loadSitin();
     if (pageKey === 'students') loadStudents();
     if (pageKey === 'reservation') { loadReservationForm(); loadReservations(); }
+    if (pageKey === 'adminreservations') loadAdminReservations();
 
     if (pageKey !== 'profile') {
       const editMode = document.getElementById('profileEditMode');
@@ -377,6 +379,7 @@ function showAdminNav() {
   document.getElementById('navAdminStudents').style.display = '';
   document.getElementById('navAdminSitin').style.display = '';
   document.getElementById('navAdminLogout').style.display = '';
+  document.getElementById('navAdminReservations').style.display = '';
 }
 
 /* ── update nav for logged-in student ── */
@@ -424,6 +427,7 @@ function adminLogout() {
   document.getElementById('navAbout').style.display = '';
   document.getElementById('navRegisterItem').style.display = '';
   document.getElementById('navLogin').style.display = '';
+  document.getElementById('navAdminReservations').style.display = 'none';  
   clearSitInForm();
   showPage('home');
 }
@@ -919,6 +923,7 @@ function setAdminNav(page) {
   document.getElementById('navAdminPanel').classList.toggle('active', page === 'admin');
   document.getElementById('navAdminStudents').classList.toggle('active', page === 'students');
   document.getElementById('navAdminSitin').classList.toggle('active', page === 'sitin');
+  document.getElementById('navAdminReservations').classList.toggle('active', page === 'adminreservations');
 }
 
 /* ── set sitin filter ── */
@@ -1516,4 +1521,94 @@ function formatTime(t) {
 /* ── helper: capitalize first letter ── */
 function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+}
+
+let adminResFilter = 'all';
+let adminResData   = [];
+
+function loadAdminReservations() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/reservations', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      adminResData = result.reservations || [];
+      renderAdminReservationsTable();
+    })
+    .catch(() => {});
+}
+
+function setResFilter(filter) {
+  adminResFilter = filter;
+  ['All','Pending','Approved','Rejected'].forEach(f => {
+    document.getElementById('resFilter' + f).classList.toggle('active', filter === f.toLowerCase());
+  });
+  renderAdminReservationsTable();
+}
+
+function renderAdminReservationsTable() {
+  const filtered = adminResFilter === 'all'
+    ? adminResData
+    : adminResData.filter(r => r.status === adminResFilter);
+
+  const tbody = document.getElementById('adminReservationsTableBody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No reservations found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(r => `
+    <tr>
+      <td>${r.id_number}</td>
+      <td>${r.first_name} ${r.last_name}</td>
+      <td>${r.purpose}</td>
+      <td>${r.lab}</td>
+      <td>${formatTime(r.time_in)}</td>
+      <td>${r.date}</td>
+      <td><span class="res-status ${r.status}">${capitalize(r.status)}</span></td>
+      <td>
+        ${r.status === 'pending' ? `
+          <div class="d-flex gap-1">
+            <button class="btn-student-edit" onclick="approveReservation(${r.id})">
+              <i class="bi bi-check-lg me-1"></i>Approve
+            </button>
+            <button class="btn-student-delete" onclick="rejectReservation(${r.id})">
+              <i class="bi bi-x-lg me-1"></i>Reject
+            </button>
+          </div>
+        ` : '—'}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function approveReservation(id) {
+  if (!confirm('Approve this reservation?')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/reservations/' + id + '/approve', {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) loadAdminReservations();
+      else alert(result.message || 'Failed to approve.');
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+
+function rejectReservation(id) {
+  if (!confirm('Reject this reservation?')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/reservations/' + id + '/reject', {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) loadAdminReservations();
+      else alert(result.message || 'Failed to reject.');
+    })
+    .catch(() => alert('Could not reach the server.'));
 }

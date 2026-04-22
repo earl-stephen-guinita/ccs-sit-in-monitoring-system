@@ -94,6 +94,11 @@
                   <i class="bi bi-person-check me-1"></i>Sit-In
                 </a>
               </li>
+              <li class="nav-item" id="navAdminReservations" style="display:none;">
+                <a class="nav-link nav-pill" href="#" onclick="showPage('adminreservations'); setAdminNav('adminreservations'); return false;">
+                  <i class="bi bi-calendar-check me-1"></i>Reservations
+                </a>
+              </li>
               <li class="nav-item" id="navAdminLogout" style="display:none;">
                 <a class="nav-link nav-pill" href="#" onclick="adminLogout(); return false;">Logout</a>
               </li>    
@@ -1250,6 +1255,49 @@
         </div>
       </div>
     </div>
+
+    <!-- ===================== admin reservations page ===================== -->
+    <div id="page-adminreservations" class="page">
+      <div class="history-page-wrapper">
+        <div class="history-container">
+          <div class="history-card">
+            <div class="history-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <h4 class="history-title mb-0"><i class="bi bi-calendar-check me-2"></i>Reservations</h4>
+              <button class="btn-res-refresh" onclick="loadAdminReservations()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+              </button>
+            </div>
+            <div class="history-controls">
+              <div class="sitin-filter-btns">
+                <button class="sitin-filter-btn active" id="resFilterAll" onclick="setResFilter('all')">All</button>
+                <button class="sitin-filter-btn" id="resFilterPending" onclick="setResFilter('pending')">Pending</button>
+                <button class="sitin-filter-btn" id="resFilterApproved" onclick="setResFilter('approved')">Approved</button>
+                <button class="sitin-filter-btn" id="resFilterRejected" onclick="setResFilter('rejected')">Rejected</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="history-table" id="adminReservationsTable">
+                <thead>
+                  <tr>
+                    <th>ID Number</th>
+                    <th>Name</th>
+                    <th>Purpose</th>
+                    <th>Lab</th>
+                    <th>Time In</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="adminReservationsTableBody">
+                  <tr><td colspan="8" class="text-center text-muted py-3">No reservations found.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>    
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="script.js"></script>
