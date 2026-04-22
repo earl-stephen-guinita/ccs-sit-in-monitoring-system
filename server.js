@@ -85,6 +85,34 @@ db.exec(`
   )
 `);
 
+// ── notifications table ──
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_number  TEXT NOT NULL,
+    type       TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    message    TEXT NOT NULL,
+    is_read    INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+  )
+`);
+
+// ── helper: create a notification for one student ──
+function createNotification(idNumber, type, title, message) {
+  db.prepare(`INSERT INTO notifications (id_number, type, title, message) VALUES (?, ?, ?, ?)`)
+    .run(idNumber, type, title, message);
+}
+
+// ── helper: create an announcement notification for ALL students ──
+function notifyAllStudents(type, title, message) {
+  const students = db.prepare('SELECT id_number FROM students').all();
+  const insert   = db.prepare(`INSERT INTO notifications (id_number, type, title, message) VALUES (?, ?, ?, ?)`);
+  db.transaction(() => {
+    for (const s of students) insert.run(s.id_number, type, title, message);
+  })();
+}
+
 // create default admin if none exists
 (async () => {
   const existing = db.prepare('SELECT id FROM admins WHERE username = ?').get('admin');
@@ -232,16 +260,22 @@ app.post('/api/admin/change-password', adminMiddleware, async (req, res) => {
   res.json({ success: true });
 });
 
-// ── GET ANNOUNCEMENTS ──
+// ── GET ANNOUNCEMENTS (student) ──
 app.get('/api/announcements', authMiddleware, (req, res) => {
   res.json({ success: true, announcements: db.prepare('SELECT * FROM announcements ORDER BY created_at DESC').all() });
 });
 
-// ── ADMIN: ADD ANNOUNCEMENT ──
+// ── ADMIN: ADD ANNOUNCEMENT → notify all students ──
 app.post('/api/admin/announcements', adminMiddleware, (req, res) => {
   const { title, content } = req.body;
   if (!title || !content) return res.json({ success: false, message: 'Title and content are required.' });
   db.prepare('INSERT INTO announcements (title, content) VALUES (?, ?)').run(title, content);
+  // notify every student
+  notifyAllStudents(
+    'announcement',
+    `📢 New Announcement: ${title}`,
+    content.length > 120 ? content.slice(0, 120) + '…' : content
+  );
   res.json({ success: true });
 });
 
@@ -407,11 +441,9 @@ app.post('/api/reservations', authMiddleware, (req, res) => {
   if (!student) return res.json({ success: false, message: 'Student not found.' });
   if (student.sessions <= 0) return res.json({ success: false, message: 'You have no remaining sessions.' });
 
-  // only 1 pending reservation allowed at a time
   const existingPending = db.prepare(`SELECT id FROM reservations WHERE id_number = ? AND status = 'pending'`).get(idNumber);
   if (existingPending) return res.json({ success: false, message: 'You already have a pending reservation. Please wait for it to be processed.' });
 
-  // prevent same slot conflict
   const conflict = db.prepare(`SELECT id FROM reservations WHERE lab = ? AND date = ? AND time_in = ? AND status IN ('pending', 'approved')`).get(lab, date, timeIn);
   if (conflict) return res.json({ success: false, message: 'That lab slot is already taken. Please choose a different time or lab.' });
 
@@ -441,7 +473,7 @@ app.get('/api/admin/reservations', adminMiddleware, (req, res) => {
   res.json({ success: true, reservations });
 });
 
-// ── ADMIN: APPROVE RESERVATION ──
+// ── ADMIN: APPROVE RESERVATION → notify student ──
 app.put('/api/admin/reservations/:id/approve', adminMiddleware, (req, res) => {
   const r = db.prepare('SELECT * FROM reservations WHERE id = ?').get(req.params.id);
   if (!r) return res.json({ success: false, message: 'Reservation not found.' });
@@ -449,15 +481,69 @@ app.put('/api/admin/reservations/:id/approve', adminMiddleware, (req, res) => {
   const student = db.prepare('SELECT * FROM students WHERE id_number = ?').get(r.id_number);
   if (!student || student.sessions <= 0) return res.json({ success: false, message: 'Student has no remaining sessions.' });
   db.prepare('UPDATE reservations SET status = ? WHERE id = ?').run('approved', req.params.id);
+  createNotification(
+    r.id_number,
+    'reservation_approved',
+    '✅ Reservation Approved',
+    `Your reservation for Lab ${r.lab} (${r.purpose}) on ${r.date} at ${r.time_in} has been approved.`
+  );
   res.json({ success: true });
 });
 
-// ── ADMIN: REJECT RESERVATION ──
+// ── ADMIN: REJECT RESERVATION → notify student ──
 app.put('/api/admin/reservations/:id/reject', adminMiddleware, (req, res) => {
   const r = db.prepare('SELECT * FROM reservations WHERE id = ?').get(req.params.id);
   if (!r) return res.json({ success: false, message: 'Reservation not found.' });
   if (r.status !== 'pending') return res.json({ success: false, message: 'Only pending reservations can be rejected.' });
   db.prepare('UPDATE reservations SET status = ? WHERE id = ?').run('rejected', req.params.id);
+  createNotification(
+    r.id_number,
+    'reservation_rejected',
+    '❌ Reservation Rejected',
+    `Your reservation for Lab ${r.lab} (${r.purpose}) on ${r.date} at ${r.time_in} was rejected. Please submit a new request if needed.`
+  );
+  res.json({ success: true });
+});
+
+// ═══════════════════════════════════════════════════
+// NOTIFICATION ROUTES
+// ═══════════════════════════════════════════════════
+
+// ── STUDENT: GET OWN NOTIFICATIONS ──
+app.get('/api/notifications', authMiddleware, (req, res) => {
+  const notifications = db.prepare(
+    `SELECT * FROM notifications WHERE id_number = ? ORDER BY created_at DESC LIMIT 50`
+  ).all(req.user.idNumber);
+  const unreadCount = db.prepare(
+    `SELECT COUNT(*) as count FROM notifications WHERE id_number = ? AND is_read = 0`
+  ).get(req.user.idNumber).count;
+  res.json({ success: true, notifications, unreadCount });
+});
+
+// ── STUDENT: MARK ONE AS READ ──
+app.put('/api/notifications/:id/read', authMiddleware, (req, res) => {
+  db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND id_number = ?')
+    .run(req.params.id, req.user.idNumber);
+  res.json({ success: true });
+});
+
+// ── STUDENT: MARK ALL AS READ ──
+app.put('/api/notifications/read-all', authMiddleware, (req, res) => {
+  db.prepare('UPDATE notifications SET is_read = 1 WHERE id_number = ?')
+    .run(req.user.idNumber);
+  res.json({ success: true });
+});
+
+// ── STUDENT: DELETE ONE NOTIFICATION ──
+app.delete('/api/notifications/:id', authMiddleware, (req, res) => {
+  db.prepare('DELETE FROM notifications WHERE id = ? AND id_number = ?')
+    .run(req.params.id, req.user.idNumber);
+  res.json({ success: true });
+});
+
+// ── STUDENT: CLEAR ALL NOTIFICATIONS ──
+app.delete('/api/notifications', authMiddleware, (req, res) => {
+  db.prepare('DELETE FROM notifications WHERE id_number = ?').run(req.user.idNumber);
   res.json({ success: true });
 });
 

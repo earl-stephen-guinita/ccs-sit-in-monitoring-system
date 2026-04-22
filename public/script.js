@@ -1653,3 +1653,201 @@ function rejectReservation(id) {
     })
     .catch(() => alert('Could not reach the server.'));
 }
+
+/* =====================================================
+   NOTIFICATION SYSTEM — append to script.js
+   ===================================================== */
+
+let notifPanelOpen  = false;
+let notifPollTimer  = null;
+const NOTIF_POLL_MS = 30000; // poll every 30 s
+
+/* ── show bell in nav when student logs in ──────────── */
+/* Call this inside updateNavForLoggedIn() — already patched below via init */
+
+/* ── toggle the side panel ── */
+function toggleNotifPanel() {
+  notifPanelOpen = !notifPanelOpen;
+  const panel   = document.getElementById('notifPanel');
+  const overlay = document.getElementById('notifOverlay');
+
+  if (notifPanelOpen) {
+    panel.style.display   = 'flex';
+    overlay.style.display = '';
+    loadNotifications();
+  } else {
+    panel.style.display   = 'none';
+    overlay.style.display = 'none';
+  }
+}
+
+/* ── fetch notifications from server ── */
+function loadNotifications() {
+  if (!currentUser || !getToken()) return;
+
+  authFetch('/api/notifications')
+    .then(res => res.json())
+    .then(result => {
+      if (!result.success) return;
+      updateNotifBadge(result.unreadCount);
+      renderNotifPanel(result.notifications);
+    })
+    .catch(() => {});
+}
+
+/* ── update the red badge number ── */
+function updateNotifBadge(count) {
+  const badge = document.getElementById('notifBadge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+/* ── render items inside the panel ── */
+function renderNotifPanel(notifications) {
+  const body = document.getElementById('notifPanelBody');
+  if (!notifications || notifications.length === 0) {
+    body.innerHTML = '<p class="notif-empty">No notifications yet.</p>';
+    return;
+  }
+
+  body.innerHTML = notifications.map(n => {
+    const iconClass = n.type === 'announcement'
+      ? 'announcement'
+      : n.type === 'reservation_approved'
+        ? 'approved'
+        : 'rejected';
+
+    const iconSymbol = n.type === 'announcement'
+      ? '<i class="bi bi-megaphone-fill"></i>'
+      : n.type === 'reservation_approved'
+        ? '<i class="bi bi-check-circle-fill"></i>'
+        : '<i class="bi bi-x-circle-fill"></i>';
+
+    return `
+      <div class="notif-item ${n.is_read ? '' : 'unread'}"
+           id="notif-${n.id}"
+           onclick="markNotifRead(${n.id})">
+        ${!n.is_read ? '<div class="notif-unread-dot"></div>' : '<div style="width:8px;flex-shrink:0;"></div>'}
+        <div class="notif-icon ${iconClass}">${iconSymbol}</div>
+        <div class="notif-content">
+          <div class="notif-title">${escapeHtml(n.title)}</div>
+          <div class="notif-message">${escapeHtml(n.message)}</div>
+          <div class="notif-time">${formatRelativeTime(n.created_at)}</div>
+        </div>
+        <button class="notif-delete-btn" title="Delete"
+                onclick="deleteNotif(event, ${n.id})">
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+    `;
+  }).join('');
+}
+
+/* ── mark single notification as read ── */
+function markNotifRead(id) {
+  authFetch(`/api/notifications/${id}/read`, { method: 'PUT' })
+    .then(res => res.json())
+    .then(() => loadNotifications())
+    .catch(() => {});
+}
+
+/* ── mark all as read ── */
+function markAllNotifsRead() {
+  authFetch('/api/notifications/read-all', { method: 'PUT' })
+    .then(res => res.json())
+    .then(() => loadNotifications())
+    .catch(() => {});
+}
+
+/* ── delete a single notification ── */
+function deleteNotif(e, id) {
+  e.stopPropagation(); // don't fire markNotifRead
+  authFetch(`/api/notifications/${id}`, { method: 'DELETE' })
+    .then(res => res.json())
+    .then(() => loadNotifications())
+    .catch(() => {});
+}
+
+/* ── clear all notifications ── */
+function clearAllNotifs() {
+  if (!confirm('Clear all notifications?')) return;
+  authFetch('/api/notifications', { method: 'DELETE' })
+    .then(res => res.json())
+    .then(() => loadNotifications())
+    .catch(() => {});
+}
+
+/* ── start polling for unread count ── */
+function startNotifPolling() {
+  stopNotifPolling();
+  loadNotifications(); // immediate first load
+  notifPollTimer = setInterval(loadNotifications, NOTIF_POLL_MS);
+}
+
+/* ── stop polling ── */
+function stopNotifPolling() {
+  if (notifPollTimer) { clearInterval(notifPollTimer); notifPollTimer = null; }
+}
+
+/* ── helper: escape HTML to avoid XSS ── */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ── helper: relative time (e.g. "2 min ago") ── */
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return '';
+  const now  = new Date();
+  const then = new Date(dateStr.replace(' ', 'T')); // SQLite uses space separator
+  const diff = Math.floor((now - then) / 1000);     // seconds
+
+  if (isNaN(diff) || diff < 0) return dateStr;
+  if (diff < 60)    return 'Just now';
+  if (diff < 3600)  return Math.floor(diff / 60) + ' min ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + ' hr ago';
+  if (diff < 604800) return Math.floor(diff / 86400) + ' day' + (Math.floor(diff / 86400) > 1 ? 's' : '') + ' ago';
+  return then.toLocaleDateString();
+}
+
+/* =====================================================
+   PATCH existing functions to wire up notifications
+   ===================================================== */
+
+/* Override updateNavForLoggedIn to also show bell + start polling */
+const _origUpdateNavForLoggedIn = updateNavForLoggedIn;
+updateNavForLoggedIn = function () {
+  _origUpdateNavForLoggedIn();
+  const bellItem = document.getElementById('navNotificationItem');
+  if (bellItem) bellItem.style.display = '';
+  startNotifPolling();
+};
+
+/* Override logoutUser to hide bell + stop polling */
+const _origLogoutUser = logoutUser;
+logoutUser = function () {
+  stopNotifPolling();
+  const bellItem = document.getElementById('navNotificationItem');
+  if (bellItem) bellItem.style.display = 'none';
+  updateNotifBadge(0);
+  // close panel if open
+  if (notifPanelOpen) toggleNotifPanel();
+  _origLogoutUser();
+};
+
+/* On DOMContentLoaded, if already logged in, start polling */
+document.addEventListener('DOMContentLoaded', function () {
+  if (currentUser && getToken()) {
+    const bellItem = document.getElementById('navNotificationItem');
+    if (bellItem) bellItem.style.display = '';
+    startNotifPolling();
+  }
+}, { once: false }); // runs after the existing DOMContentLoaded in script.js
