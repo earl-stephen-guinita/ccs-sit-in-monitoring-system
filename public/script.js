@@ -108,6 +108,7 @@ function showPage(pageKey) {
     if (pageKey === 'history') loadHistory();
     if (pageKey === 'sitin') loadSitin();
     if (pageKey === 'students') loadStudents();
+    if (pageKey === 'reservation') { loadReservationForm(); loadReservations(); }
 
     if (pageKey !== 'profile') {
       const editMode = document.getElementById('profileEditMode');
@@ -388,6 +389,7 @@ function updateNavForLoggedIn() {
   document.getElementById('navLogoutItem').style.display = '';
   document.getElementById('navProfileName').textContent = currentUser.firstName;
   document.getElementById('navHistoryItem').style.display = '';
+  document.getElementById('navReservationItem').style.display = '';
 }
 
 /* ── logout ── */
@@ -405,6 +407,7 @@ function logoutUser() {
       document.getElementById('navHistoryItem').style.display = 'none';
       document.getElementById('heroSection').style.display = '';
       document.getElementById('dashboardSection').style.display = 'none';
+      document.getElementById('navReservationItem').style.display = 'none';
       showPage('home');
     });
 }

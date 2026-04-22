@@ -318,6 +318,17 @@ app.post('/api/admin/students', adminMiddleware, async (req, res) => {
   res.json({ success: true });
 });
 
+// ── ADMIN: RESET ALL SESSIONS ──
+app.post('/api/admin/students/reset-sessions', adminMiddleware, (req, res) => {
+  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
+  const stmt = db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?');
+  db.transaction(() => {
+    for (const s of db.prepare('SELECT id_number, course FROM students').all())
+      stmt.run(itCourses.includes(s.course) ? 30 : 15, s.id_number);
+  })();
+  res.json({ success: true });
+});
+
 // ── ADMIN: EDIT STUDENT ──
 app.put('/api/admin/students/:idNumber', adminMiddleware, async (req, res) => {
   const { idNumber } = req.params;
@@ -342,17 +353,6 @@ app.delete('/api/admin/students/:idNumber', adminMiddleware, (req, res) => {
   if (!db.prepare('SELECT id FROM students WHERE id_number = ?').get(req.params.idNumber))
     return res.json({ success: false, message: 'Student not found.' });
   db.prepare('DELETE FROM students WHERE id_number = ?').run(req.params.idNumber);
-  res.json({ success: true });
-});
-
-// ── ADMIN: RESET ALL SESSIONS ──
-app.post('/api/admin/students/reset-sessions', adminMiddleware, (req, res) => {
-  const itCourses = ['BSIT', 'BSCS', 'BSCS-AI'];
-  const stmt = db.prepare('UPDATE students SET sessions = ? WHERE id_number = ?');
-  db.transaction(() => {
-    for (const s of db.prepare('SELECT id_number, course FROM students').all())
-      stmt.run(itCourses.includes(s.course) ? 30 : 15, s.id_number);
-  })();
   res.json({ success: true });
 });
 
