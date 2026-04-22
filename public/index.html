@@ -70,6 +70,11 @@
                   <i class="bi bi-clock-history me-1"></i>History
                 </a>
               </li>
+              <li class="nav-item" id="navReservationItem" style="display:none;">
+                <a class="nav-link nav-pill" href="#" onclick="showPage('reservation'); return false;">
+                  <i class="bi bi-calendar-check me-1"></i>Reservation
+                </a>
+              </li>              
               <li class="nav-item" id="navLogoutItem" style="display:none;">
                 <a class="nav-link nav-pill" href="#" onclick="logoutUser(); return false;">Logout</a>
               </li>
@@ -673,6 +678,149 @@
         </div>
       </div>
     </div>
+
+    <!-- ===================== reservation page ===================== -->
+    <div id="page-reservation" class="page">
+      <div class="reservation-page-wrapper">
+        <div class="reservation-container">
+          <button class="btn btn-back mb-4" onclick="showPage('home')">
+            <i class="bi bi-arrow-left me-1"></i> Back
+          </button>
+    
+          <!-- reservation form card -->
+          <div class="reservation-card mb-4">
+            <div class="reservation-card-header">
+              <h4 class="reservation-title"><i class="bi bi-calendar-plus me-2"></i>Reserve a Lab</h4>
+            </div>
+            <div class="reservation-form-body">
+    
+              <!-- student info (read-only) -->
+              <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold">ID Number</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-person-badge"></i></span>
+                    <input type="text" class="form-control" id="resIdNumber" readonly
+                      style="background:#f0e6ff; cursor:not-allowed;" />
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold">Last Name</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                    <input type="text" class="form-control" id="resLastName" readonly
+                      style="background:#f0e6ff; cursor:not-allowed;" />
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold">First Name</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                    <input type="text" class="form-control" id="resFirstName" readonly
+                      style="background:#f0e6ff; cursor:not-allowed;" />
+                  </div>
+                </div>
+              </div>
+    
+              <!-- editable fields -->
+              <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold">Purpose <span class="text-danger">*</span></label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-code-slash"></i></span>
+                    <select class="form-select" id="resPurpose">
+                      <option value="" disabled selected>Select Purpose</option>
+                      <option>C Programming</option>
+                      <option>Java</option>
+                      <option>Python</option>
+                      <option>C++</option>
+                      <option>Database (SQL)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold">Lab <span class="text-danger">*</span></label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-building"></i></span>
+                    <select class="form-select" id="resLab">
+                      <option value="" disabled selected>Select Lab</option>
+                      <option>524</option>
+                      <option>526</option>
+                      <option>528</option>
+                      <option>530</option>
+                      <option>542</option>
+                      <option>544</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold">Remaining Sessions</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-clock-history"></i></span>
+                    <input type="number" class="form-control" id="resSessions" readonly
+                      style="background:#f0e6ff; cursor:not-allowed;" />
+                  </div>
+                </div>
+              </div>
+    
+              <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                  <label class="form-label fw-semibold">Time In <span class="text-danger">*</span></label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-clock"></i></span>
+                    <input type="time" class="form-control" id="resTimeIn" />
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label fw-semibold">Date <span class="text-danger">*</span></label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                    <input type="date" class="form-control" id="resDate" />
+                  </div>
+                </div>
+              </div>
+    
+              <div id="resError" class="alert alert-danger py-2 small mb-3" style="display:none;"></div>
+              <div id="resSuccess" class="alert alert-success py-2 small mb-3" style="display:none;"></div>
+    
+              <div class="d-flex justify-content-end">
+                <button class="btn btn-reserve" onclick="submitReservation()">
+                  <i class="bi bi-calendar-check me-2"></i>Reserve
+                </button>
+              </div>
+            </div>
+          </div>
+    
+          <!-- reservation history table -->
+          <div class="reservation-card">
+            <div class="reservation-card-header d-flex align-items-center justify-content-between">
+              <h4 class="reservation-title mb-0"><i class="bi bi-list-ul me-2"></i>My Reservations</h4>
+              <button class="btn-res-refresh" onclick="loadReservations()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="history-table" id="reservationTable">
+                <thead>
+                  <tr>
+                    <th>Purpose</th>
+                    <th>Lab</th>
+                    <th>Time In</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="reservationTableBody">
+                  <tr><td colspan="6" class="text-center text-muted py-3">No reservations yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+    
+        </div>
+      </div>
+    </div>    
 
     <!-- ===================== admin sit-in page ===================== -->
     <div id="page-sitin" class="page">

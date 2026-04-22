@@ -1368,3 +1368,149 @@ function renderPagination(containerId, currentPage, pages, onPageClick) {
   mkBtn('&rsaquo;', currentPage + 1, currentPage === pages, false);
   mkBtn('&raquo;', pages, currentPage === pages, false);
 }
+
+/* ══════════════════════════════════════════════════════
+   RESERVATION PAGE
+══════════════════════════════════════════════════════ */
+ 
+/* ── populate reservation form with current user data ── */
+function loadReservationForm() {
+  if (!currentUser) return;
+ 
+  document.getElementById('resIdNumber').value  = currentUser.idNumber;
+  document.getElementById('resLastName').value  = currentUser.lastName;
+  document.getElementById('resFirstName').value = currentUser.firstName;
+  document.getElementById('resSessions').value  = currentUser.sessions !== undefined ? currentUser.sessions : '—';
+ 
+  // set minimum date to today
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('resDate').min = today;
+ 
+  // reset dropdowns and inputs
+  document.getElementById('resPurpose').value = '';
+  document.getElementById('resLab').value     = '';
+  document.getElementById('resTimeIn').value  = '';
+  document.getElementById('resDate').value    = '';
+ 
+  // hide alerts
+  document.getElementById('resError').style.display   = 'none';
+  document.getElementById('resSuccess').style.display = 'none';
+}
+ 
+/* ── load and render the student's reservation list ── */
+function loadReservations() {
+  authFetch('/api/reservations')
+    .then(res => res.json())
+    .then(result => {
+      const tbody = document.getElementById('reservationTableBody');
+      const rows  = result.reservations || [];
+ 
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No reservations yet.</td></tr>';
+        return;
+      }
+ 
+      tbody.innerHTML = rows.map(r => {
+        const canCancel = r.status === 'pending';
+        return `
+          <tr>
+            <td>${r.purpose}</td>
+            <td>${r.lab}</td>
+            <td>${formatTime(r.time_in)}</td>
+            <td>${r.date}</td>
+            <td><span class="res-status ${r.status}">${capitalize(r.status)}</span></td>
+            <td>
+              ${canCancel
+                ? `<button class="btn-res-cancel" onclick="cancelReservation(${r.id})">
+                     <i class="bi bi-x-circle me-1"></i>Cancel
+                   </button>`
+                : '—'}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    })
+    .catch(() => {});
+}
+ 
+/* ── submit reservation ── */
+function submitReservation() {
+  const purpose = document.getElementById('resPurpose').value;
+  const lab     = document.getElementById('resLab').value;
+  const timeIn  = document.getElementById('resTimeIn').value;
+  const date    = document.getElementById('resDate').value;
+  const errEl   = document.getElementById('resError');
+  const okEl    = document.getElementById('resSuccess');
+ 
+  errEl.style.display = 'none';
+  okEl.style.display  = 'none';
+ 
+  if (!purpose || !lab || !timeIn || !date) {
+    errEl.textContent = 'Please fill in all required fields.';
+    errEl.style.display = '';
+    return;
+  }
+ 
+  // date must not be in the past
+  const today = new Date().toISOString().split('T')[0];
+  if (date < today) {
+    errEl.textContent = 'Please select today or a future date.';
+    errEl.style.display = '';
+    return;
+  }
+ 
+  authFetch('/api/reservations', {
+    method: 'POST',
+    body: JSON.stringify({ purpose, lab, timeIn, date }),
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        okEl.textContent = '✓ Reservation submitted! Please wait for admin approval.';
+        okEl.style.display = '';
+        // reset editable fields
+        document.getElementById('resPurpose').value = '';
+        document.getElementById('resLab').value     = '';
+        document.getElementById('resTimeIn').value  = '';
+        document.getElementById('resDate').value    = '';
+        loadReservations();
+      } else {
+        errEl.textContent = result.message || 'Failed to submit reservation.';
+        errEl.style.display = '';
+      }
+    })
+    .catch(() => {
+      errEl.textContent = 'Could not reach the server.';
+      errEl.style.display = '';
+    });
+}
+ 
+/* ── cancel a pending reservation ── */
+function cancelReservation(id) {
+  if (!confirm('Cancel this reservation?')) return;
+ 
+  authFetch('/api/reservations/' + id, { method: 'DELETE' })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        loadReservations();
+      } else {
+        alert(result.message || 'Failed to cancel reservation.');
+      }
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+ 
+/* ── helper: format 24h time to 12h ── */
+function formatTime(t) {
+  if (!t) return '—';
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 || 12;
+  return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+ 
+/* ── helper: capitalize first letter ── */
+function capitalize(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+}
