@@ -858,12 +858,12 @@
               <table class="history-table" id="reservationTable">
                 <thead>
                   <tr>
-                    <th>Purpose</th>
-                    <th>PC</th>
-                    <th>Lab</th>
-                    <th>Time In</th>
-                    <th>Date</th>
-                    <th>Status</th>
+                    <th onclick="sortStudentRes('purpose')">Purpose <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortStudentRes('pc_number')">PC <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortStudentRes('lab')">Lab <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortStudentRes('time_in')">Time In <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortStudentRes('date')">Date <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortStudentRes('status')">Status <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -1331,13 +1331,14 @@
               <table class="history-table" id="adminReservationsTable">
                 <thead>
                   <tr>
-                    <th>ID Number</th>
-                    <th>Name</th>
-                    <th>Purpose</th>
-                    <th>Lab</th>
-                    <th>Time In</th>
-                    <th>Date</th>
-                    <th>Status</th>
+                    <th onclick="sortAdminRes('id_number')">ID Number <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortAdminRes('name')">Name <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortAdminRes('purpose')">Purpose <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortAdminRes('lab')">Lab <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortAdminRes('pc_number')">PC <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortAdminRes('time_in')">Time In <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortAdminRes('date')">Date <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortAdminRes('status')">Status <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th>Actions</th>
                   </tr>
                 </thead>

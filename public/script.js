@@ -1531,41 +1531,76 @@ function selectPc(pcNumber) {
   info.style.display = '';
 }
  
-/* ── load and render the student's reservation list ── */
+// ── student reservations sort state ──
+let studentResData    = [];
+let studentResSortKey = 'date';
+let studentResSortDir = 'desc';
+
+function sortStudentRes(key) {
+  if (studentResSortKey === key) {
+    studentResSortDir = studentResSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    studentResSortKey = key;
+    studentResSortDir = 'asc';
+  }
+  renderReservationsTable();
+}
+
 function loadReservations() {
   authFetch('/api/reservations')
     .then(res => res.json())
     .then(result => {
-      const tbody = document.getElementById('reservationTableBody');
-      const rows  = result.reservations || [];
- 
-      if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No reservations yet.</td></tr>';
-        return;
-      }
- 
-      tbody.innerHTML = rows.map(r => {
-        const canCancel = r.status === 'pending';
-        return `
-          <tr>
-            <td>${r.purpose}</td>
-            <td>PC ${r.pc_number || '—'}</td>
-            <td>${r.lab}</td>
-            <td>${formatTime(r.time_in)}</td>
-            <td>${r.date}</td>
-            <td><span class="res-status ${r.status}">${capitalize(r.status)}</span></td>
-            <td>
-              ${canCancel
-                ? `<button class="btn-res-cancel" onclick="cancelReservation(${r.id})">
-                     <i class="bi bi-x-circle me-1"></i>Cancel
-                   </button>`
-                : '—'}
-            </td>
-          </tr>
-        `;
-      }).join('');
+      studentResData = result.reservations || [];
+      renderReservationsTable();
     })
     .catch(() => {});
+}
+
+function renderReservationsTable() {
+  const tbody = document.getElementById('reservationTableBody');
+
+  // sort
+  const sorted = [...studentResData].sort((a, b) => {
+    let valA = a[studentResSortKey] !== undefined ? String(a[studentResSortKey] ?? '') : '';
+    let valB = b[studentResSortKey] !== undefined ? String(b[studentResSortKey] ?? '') : '';
+    if (valA < valB) return studentResSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return studentResSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // update sort icons
+  document.querySelectorAll('#reservationTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#reservationTable th');
+  const keys = ['purpose', 'pc_number', 'lab', 'time_in', 'date', 'status'];
+  keys.forEach((k, i) => {
+    if (k === studentResSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active');
+  });
+
+  if (sorted.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No reservations yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sorted.map(r => {
+    const canCancel = r.status === 'pending';
+    return `
+      <tr>
+        <td>${r.purpose}</td>
+        <td>${r.pc_number ? 'PC ' + r.pc_number : '—'}</td>
+        <td>${r.lab}</td>
+        <td>${formatTime(r.time_in)}</td>
+        <td>${r.date}</td>
+        <td><span class="res-status ${r.status}">${capitalize(r.status)}</span></td>
+        <td>
+          ${canCancel
+            ? `<button class="btn-res-cancel" onclick="cancelReservation(${r.id})">
+                 <i class="bi bi-x-circle me-1"></i>Cancel
+               </button>`
+            : '—'}
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
  
 /* ── submit reservation ── */
@@ -1681,6 +1716,20 @@ function loadAdminReservations() {
     .catch(() => {});
 }
 
+// ── admin reservations sort state ──
+let adminResSortKey = 'date';
+let adminResSortDir = 'desc';
+
+function sortAdminRes(key) {
+  if (adminResSortKey === key) {
+    adminResSortDir = adminResSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    adminResSortKey = key;
+    adminResSortDir = 'asc';
+  }
+  renderAdminReservationsTable();
+}
+
 function setResFilter(filter) {
   adminResFilter = filter;
   ['All','Pending','Approved','Rejected'].forEach(f => {
@@ -1690,13 +1739,36 @@ function setResFilter(filter) {
 }
 
 function renderAdminReservationsTable() {
-  const filtered = adminResFilter === 'all'
+  let filtered = adminResFilter === 'all'
     ? adminResData
     : adminResData.filter(r => r.status === adminResFilter);
 
+  // sort
+  filtered = [...filtered].sort((a, b) => {
+    let valA, valB;
+    if (adminResSortKey === 'name') {
+      valA = a.first_name + ' ' + a.last_name;
+      valB = b.first_name + ' ' + b.last_name;
+    } else {
+      valA = a[adminResSortKey] !== undefined ? String(a[adminResSortKey] ?? '') : '';
+      valB = b[adminResSortKey] !== undefined ? String(b[adminResSortKey] ?? '') : '';
+    }
+    if (valA < valB) return adminResSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return adminResSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // update sort icons
+  document.querySelectorAll('#adminReservationsTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#adminReservationsTable th');
+  const keys = ['id_number', 'name', 'purpose', 'lab', 'pc_number', 'time_in', 'date', 'status'];
+  keys.forEach((k, i) => {
+    if (k === adminResSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active');
+  });
+
   const tbody = document.getElementById('adminReservationsTableBody');
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No reservations found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No reservations found.</td></tr>';
     return;
   }
 
@@ -1706,6 +1778,7 @@ function renderAdminReservationsTable() {
       <td>${r.first_name} ${r.last_name}</td>
       <td>${r.purpose}</td>
       <td>${r.lab}</td>
+      <td>${r.pc_number ? 'PC ' + r.pc_number : '—'}</td>
       <td>${formatTime(r.time_in)}</td>
       <td>${r.date}</td>
       <td><span class="res-status ${r.status}">${capitalize(r.status)}</span></td>
