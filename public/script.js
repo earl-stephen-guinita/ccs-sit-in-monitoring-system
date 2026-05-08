@@ -85,15 +85,16 @@ let currentUser = getUser();
 
 /* ── page titles ── */
 const PAGE_TITLES = {
-  home:         'CCS | Home',
-  register:     'CCS | Register',
-  login:        'CCS | Login',
-  profile:      'CCS | Profile',
-  admin:        'CCS | Admin Panel',
-  history:      'CCS | History',
-  sitin:        'CCS | Current Sit-In',
-  students:     'CCS | Students',
+  home:              'CCS | Home',
+  register:          'CCS | Register',
+  login:             'CCS | Login',
+  profile:           'CCS | Profile',
+  admin:             'CCS | Admin Panel',
+  history:           'CCS | History',
+  sitin:             'CCS | Current Sit-In',
+  students:          'CCS | Students',
   adminreservations: 'CCS | Reservations',
+  adminfeedback:     'CCS | Feedback Reports',
 };
 
 /* ── page switcher ── */
@@ -111,6 +112,7 @@ function showPage(pageKey) {
     if (pageKey === 'students') loadStudents();
     if (pageKey === 'reservation') { loadReservationForm(); loadReservations(); }
     if (pageKey === 'adminreservations') loadAdminReservations();
+    if (pageKey === 'adminfeedback') loadFeedbackReport();
 
     if (pageKey !== 'profile') {
       const editMode = document.getElementById('profileEditMode');
@@ -380,6 +382,7 @@ function showAdminNav() {
   document.getElementById('navAdminSitin').style.display = '';
   document.getElementById('navAdminLogout').style.display = '';
   document.getElementById('navAdminReservations').style.display = '';
+  document.getElementById('navAdminFeedback').style.display = '';
 }
 
 /* ── update nav for logged-in student ── */
@@ -428,6 +431,7 @@ function adminLogout() {
   document.getElementById('navRegisterItem').style.display = '';
   document.getElementById('navLogin').style.display = '';
   document.getElementById('navAdminReservations').style.display = 'none';  
+  document.getElementById('navAdminFeedback').style.display = 'none';
   clearSitInForm();
   showPage('home');
 }
@@ -846,7 +850,7 @@ function renderHistoryTable() {
 
   document.querySelectorAll('#historyTable .sort-btns').forEach(el => el.classList.remove('active'));
   const ths = document.querySelectorAll('#historyTable th');
-  const keys = ['id_number', 'name', 'purpose', 'lab', 'login_time', 'logout_time', 'date'];
+  const keys = ['id_number', 'name', 'purpose', 'lab', 'pc_number', 'login_time', 'logout_time', 'date'];
   keys.forEach((k, i) => {
     if (k === historySortKey) ths[i].querySelector('.sort-btns').classList.add('active');
   });
@@ -861,6 +865,7 @@ function renderHistoryTable() {
         <td>${r.first_name} ${r.last_name}</td>
         <td>${r.purpose}</td>
         <td>${r.lab}</td>
+        <td>${r.pc_number || '—'}</td>
         <td>${r.login_time || '—'}</td>
         <td>${r.logout_time || '—'}</td>
         <td>${r.date || '—'}</td>
@@ -965,6 +970,7 @@ function setAdminNav(page) {
   document.getElementById('navAdminStudents').classList.toggle('active', page === 'students');
   document.getElementById('navAdminSitin').classList.toggle('active', page === 'sitin');
   document.getElementById('navAdminReservations').classList.toggle('active', page === 'adminreservations');
+  document.getElementById('navAdminFeedback').classList.toggle('active', page === 'adminfeedback');
 }
 
 /* ── set sitin filter ── */
@@ -1049,7 +1055,7 @@ function renderSitinTable() {
 
   document.querySelectorAll('#sitinTable .sort-btns').forEach(el => el.classList.remove('active'));
   const ths  = document.querySelectorAll('#sitinTable th');
-  const keys = ['id', 'id_number', 'name', 'purpose', 'lab', 'sessions', 'status'];
+  const keys = ['id', 'id_number', 'name', 'purpose', 'lab', 'pc_number', 'sessions', 'status'];
   keys.forEach((k, i) => {
     if (k === sitinSortKey) ths[i].querySelector('.sort-btns').classList.add('active');
   });
@@ -1067,6 +1073,7 @@ function renderSitinTable() {
           <td>${r.first_name} ${r.last_name}</td>
           <td>${r.purpose}</td>
           <td>${r.lab}</td>
+          <td>${r.pc_number || '—'}</td>
           <td>${r.sessions_at_sitin !== null && r.sessions_at_sitin !== undefined ? r.sessions_at_sitin : '—'}</td>
           <td>
             <span class="sitin-status ${isActive ? 'active' : 'done'}">
@@ -1423,27 +1430,105 @@ function renderPagination(containerId, currentPage, pages, onPageClick) {
 ══════════════════════════════════════════════════════ */
  
 /* ── populate reservation form with current user data ── */
+let selectedPcNumber = null;
+
 function loadReservationForm() {
   if (!currentUser) return;
- 
+
   document.getElementById('resIdNumber').value  = currentUser.idNumber;
   document.getElementById('resLastName').value  = currentUser.lastName;
   document.getElementById('resFirstName').value = currentUser.firstName;
   document.getElementById('resSessions').value  = currentUser.sessions !== undefined ? currentUser.sessions : '—';
- 
-  // set minimum date to today
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('resDate').min = today;
- 
-  // reset dropdowns and inputs
+
+  // block Sundays — set min to today
+  const today = new Date();
+  document.getElementById('resDate').min = today.toISOString().split('T')[0];
+
+  // reset fields
   document.getElementById('resPurpose').value = '';
   document.getElementById('resLab').value     = '';
   document.getElementById('resTimeIn').value  = '';
   document.getElementById('resDate').value    = '';
- 
-  // hide alerts
   document.getElementById('resError').style.display   = 'none';
   document.getElementById('resSuccess').style.display = 'none';
+  document.getElementById('pcGridSection').style.display = 'none';
+  document.getElementById('selectedPcInfo').style.display = 'none';
+  selectedPcNumber = null;
+}
+
+function onResFieldChange() {
+  const lab    = document.getElementById('resLab').value;
+  const date   = document.getElementById('resDate').value;
+  const timeIn = document.getElementById('resTimeIn').value;
+
+  // validate Sunday
+  if (date) {
+    const day = new Date(date + 'T00:00:00').getDay();
+    if (day === 0) {
+      document.getElementById('resError').textContent = 'Reservations are not allowed on Sundays.';
+      document.getElementById('resError').style.display = '';
+      document.getElementById('pcGridSection').style.display = 'none';
+      return;
+    }
+    document.getElementById('resError').style.display = 'none';
+  }
+
+  if (lab && date && timeIn) {
+    loadPcGrid(lab, date, timeIn);
+  } else {
+    document.getElementById('pcGridSection').style.display = 'none';
+    selectedPcNumber = null;
+  }
+}
+
+function loadPcGrid(lab, date, timeIn) {
+  const section = document.getElementById('pcGridSection');
+  const grid    = document.getElementById('pcGrid');
+  const loading = document.getElementById('pcGridLoading');
+
+  section.style.display = '';
+  grid.innerHTML = '';
+  loading.style.display = '';
+  selectedPcNumber = null;
+  document.getElementById('selectedPcInfo').style.display = 'none';
+
+  authFetch(`/api/lab-pcs?lab=${encodeURIComponent(lab)}&date=${encodeURIComponent(date)}&timeIn=${encodeURIComponent(timeIn)}`)
+    .then(res => res.json())
+    .then(result => {
+      loading.style.display = 'none';
+      if (!result.success) return;
+
+      grid.innerHTML = result.pcs.map(pc => `
+        <div class="pc-cell ${pc.effectiveStatus}"
+             id="pc-cell-${pc.pc_number}"
+             onclick="${pc.effectiveStatus === 'available' ? `selectPc(${pc.pc_number})` : ''}"
+             title="PC ${pc.pc_number} — ${pc.effectiveStatus}">
+          <i class="bi bi-display"></i>
+          <span>${pc.pc_number}</span>
+        </div>
+      `).join('');
+    })
+    .catch(() => { loading.style.display = 'none'; });
+}
+
+function selectPc(pcNumber) {
+  // deselect previous
+  document.querySelectorAll('.pc-cell.selected').forEach(el => {
+    el.classList.remove('selected');
+    el.classList.add('available');
+  });
+
+  const cell = document.getElementById(`pc-cell-${pcNumber}`);
+  if (cell) {
+    cell.classList.remove('available');
+    cell.classList.add('selected');
+  }
+
+  selectedPcNumber = pcNumber;
+  const info = document.getElementById('selectedPcInfo');
+  const label = document.getElementById('selectedPcLabel');
+  label.textContent = `PC ${pcNumber} — Lab ${document.getElementById('resLab').value}`;
+  info.style.display = '';
 }
  
 /* ── load and render the student's reservation list ── */
@@ -1464,6 +1549,7 @@ function loadReservations() {
         return `
           <tr>
             <td>${r.purpose}</td>
+            <td>PC ${r.pc_number || '—'}</td>
             <td>${r.lab}</td>
             <td>${formatTime(r.time_in)}</td>
             <td>${r.date}</td>
@@ -1490,38 +1576,53 @@ function submitReservation() {
   const date    = document.getElementById('resDate').value;
   const errEl   = document.getElementById('resError');
   const okEl    = document.getElementById('resSuccess');
- 
+
   errEl.style.display = 'none';
   okEl.style.display  = 'none';
- 
+
   if (!purpose || !lab || !timeIn || !date) {
     errEl.textContent = 'Please fill in all required fields.';
     errEl.style.display = '';
     return;
   }
- 
-  // date must not be in the past
+
+  if (!selectedPcNumber) {
+    errEl.textContent = 'Please select a PC from the grid.';
+    errEl.style.display = '';
+    return;
+  }
+
+  // block Sundays
+  const day = new Date(date + 'T00:00:00').getDay();
+  if (day === 0) {
+    errEl.textContent = 'Reservations are not allowed on Sundays.';
+    errEl.style.display = '';
+    return;
+  }
+
   const today = new Date().toISOString().split('T')[0];
   if (date < today) {
     errEl.textContent = 'Please select today or a future date.';
     errEl.style.display = '';
     return;
   }
- 
+
   authFetch('/api/reservations', {
     method: 'POST',
-    body: JSON.stringify({ purpose, lab, timeIn, date }),
+    body: JSON.stringify({ purpose, lab, timeIn, date, pcNumber: selectedPcNumber }),
   })
     .then(res => res.json())
     .then(result => {
       if (result.success) {
-        okEl.textContent = '✓ Reservation submitted! Please wait for admin approval.';
+        okEl.textContent = `✓ PC ${selectedPcNumber} reserved! Waiting for admin approval.`;
         okEl.style.display = '';
-        // reset editable fields
+        selectedPcNumber = null;
         document.getElementById('resPurpose').value = '';
         document.getElementById('resLab').value     = '';
         document.getElementById('resTimeIn').value  = '';
         document.getElementById('resDate').value    = '';
+        document.getElementById('pcGridSection').style.display = 'none';
+        document.getElementById('selectedPcInfo').style.display = 'none';
         loadReservations();
       } else {
         errEl.textContent = result.message || 'Failed to submit reservation.';
@@ -1851,3 +1952,170 @@ document.addEventListener('DOMContentLoaded', function () {
     startNotifPolling();
   }
 }, { once: false }); // runs after the existing DOMContentLoaded in script.js
+
+/* ══════════════════════════════════════════════════════
+   ADMIN FEEDBACK REPORTS
+══════════════════════════════════════════════════════ */
+
+let feedbackData    = [];
+let feedbackSortKey = 'date';
+let feedbackSortDir = 'desc';
+let feedbackPage    = 1;
+
+function loadFeedbackReport() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/feedback', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      feedbackData = result.logs || [];
+      feedbackPage = 1;
+      renderFeedbackTable();
+    })
+    .catch(() => {});
+}
+
+function sortFeedback(key) {
+  if (feedbackSortKey === key) {
+    feedbackSortDir = feedbackSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    feedbackSortKey = key;
+    feedbackSortDir = 'asc';
+  }
+  feedbackPage = 1;
+  renderFeedbackTable();
+}
+
+function renderFeedbackTable() {
+  const pageSize = parseInt(document.getElementById('feedbackPageSize').value);
+  const search   = document.getElementById('feedbackSearch').value.toLowerCase();
+
+  let filtered = feedbackData.filter(r => {
+    const name = r.first_name + ' ' + r.last_name;
+    return (
+      r.id_number.toLowerCase().includes(search) ||
+      name.toLowerCase().includes(search) ||
+      r.lab.toLowerCase().includes(search) ||
+      (r.date || '').toLowerCase().includes(search) ||
+      (r.feedback || '').toLowerCase().includes(search)
+    );
+  });
+
+  filtered.sort((a, b) => {
+    let valA, valB;
+    if (feedbackSortKey === 'name') {
+      valA = a.first_name + ' ' + a.last_name;
+      valB = b.first_name + ' ' + b.last_name;
+    } else {
+      valA = a[feedbackSortKey] || '';
+      valB = b[feedbackSortKey] || '';
+    }
+    if (valA < valB) return feedbackSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return feedbackSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const total  = filtered.length;
+  const pages  = Math.max(1, Math.ceil(total / pageSize));
+  if (feedbackPage > pages) feedbackPage = pages;
+  const start  = (feedbackPage - 1) * pageSize;
+  const end    = Math.min(start + pageSize, total);
+  const paged  = filtered.slice(start, end);
+
+  document.querySelectorAll('#feedbackTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#feedbackTable th');
+  const keys = ['id_number', 'name', 'lab', 'date', 'feedback'];
+  keys.forEach((k, i) => {
+    if (k === feedbackSortKey && ths[i]) ths[i].querySelector('.sort-btns').classList.add('active');
+  });
+
+  const tbody = document.getElementById('feedbackTableBody');
+  if (paged.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No feedback found.</td></tr>';
+  } else {
+    tbody.innerHTML = paged.map(r => `
+      <tr>
+        <td>${r.id_number}</td>
+        <td>${r.first_name} ${r.last_name}</td>
+        <td>${r.lab}</td>
+        <td>${r.date || '—'}</td>
+        <td class="feedback-message-cell">${r.feedback}</td>
+      </tr>
+    `).join('');
+  }
+
+  document.getElementById('feedbackInfo').textContent =
+    total === 0 ? 'Showing 0 to 0 of 0 entries'
+    : `Showing ${start + 1} to ${end} of ${total} entries`;
+
+  renderPagination('feedbackPagination', feedbackPage, pages, (p) => { feedbackPage = p; renderFeedbackTable(); });
+}
+
+function printFeedbackReport() {
+  const rows = feedbackData.filter(r => {
+    const search = document.getElementById('feedbackSearch').value.toLowerCase();
+    if (!search) return true;
+    const name = r.first_name + ' ' + r.last_name;
+    return (
+      r.id_number.toLowerCase().includes(search) ||
+      name.toLowerCase().includes(search) ||
+      r.lab.toLowerCase().includes(search) ||
+      (r.date || '').toLowerCase().includes(search) ||
+      (r.feedback || '').toLowerCase().includes(search)
+    );
+  });
+
+  const tableRows = rows.map(r => `
+    <tr>
+      <td>${r.id_number}</td>
+      <td>${r.first_name} ${r.last_name}</td>
+      <td>${r.lab}</td>
+      <td>${r.date || '—'}</td>
+      <td>${r.feedback}</td>
+    </tr>
+  `).join('');
+
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Feedback Report — CCS Sit-In Monitoring System</title>
+      <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 2rem; color: #1a1a2e; }
+        .print-header { text-align: center; margin-bottom: 1.5rem; }
+        .print-header h2 { margin: 0; font-size: 1.3rem; color: #2d0f5e; }
+        .print-header p  { margin: 0.25rem 0 0; font-size: 0.85rem; color: #666; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        thead tr { background: #2d0f5e; color: #fff; }
+        th, td { padding: 0.6rem 0.8rem; border: 1px solid #ddd; text-align: left; vertical-align: top; }
+        tbody tr:nth-child(even) { background: #f8f4ff; }
+        .print-footer { margin-top: 1rem; font-size: 0.75rem; color: #aaa; text-align: right; }
+      </style>
+    </head>
+    <body>
+      <div class="print-header">
+        <h2>College of Computer Studies — Feedback Report</h2>
+        <p>University of Cebu &nbsp;|&nbsp; CCS Sit-In Monitoring System &nbsp;|&nbsp; Printed: ${new Date().toLocaleString()}</p>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Student ID Number</th>
+            <th>Name</th>
+            <th>Laboratory</th>
+            <th>Date</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+      <div class="print-footer">Total records: ${rows.length}</div>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+}

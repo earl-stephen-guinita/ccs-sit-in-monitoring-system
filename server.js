@@ -85,6 +85,8 @@ db.exec(`
   )
 `);
 
+try { db.exec(`ALTER TABLE reservations ADD COLUMN pc_number INTEGER`); } catch (e) {}
+
 // ── lab PCs table ──
 db.exec(`
   CREATE TABLE IF NOT EXISTS lab_pcs (
@@ -360,6 +362,17 @@ app.post('/api/history/feedback/:id', authMiddleware, (req, res) => {
 // ── ADMIN: GET ALL HISTORY ──
 app.get('/api/admin/history', adminMiddleware, (req, res) => {
   res.json({ success: true, logs: db.prepare('SELECT * FROM sit_in_logs ORDER BY date DESC, login_time DESC').all() });
+});
+
+// ── ADMIN: GET ALL FEEDBACK ──
+app.get('/api/admin/feedback', adminMiddleware, (req, res) => {
+  const logs = db.prepare(`
+    SELECT id_number, last_name, first_name, lab, date, feedback
+    FROM sit_in_logs
+    WHERE feedback IS NOT NULL AND feedback != ''
+    ORDER BY date DESC, login_time DESC
+  `).all();
+  res.json({ success: true, logs });
 });
 
 // ── ADMIN: GET SIT-IN LOGS ──

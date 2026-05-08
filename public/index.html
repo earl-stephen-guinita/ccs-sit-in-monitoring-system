@@ -107,6 +107,11 @@
                   <i class="bi bi-calendar-check me-1"></i>Reservations
                 </a>
               </li>
+              <li class="nav-item" id="navAdminFeedback" style="display:none;">
+                <a class="nav-link nav-pill" href="#" onclick="showPage('adminfeedback'); setAdminNav('adminfeedback'); return false;">
+                  <i class="bi bi-chat-left-text me-1"></i>Feedback
+                </a>
+              </li>
               <li class="nav-item" id="navAdminLogout" style="display:none;">
                 <a class="nav-link nav-pill" href="#" onclick="adminLogout(); return false;">Logout</a>
               </li>    
@@ -672,6 +677,7 @@
                     <th onclick="sortHistory('name')">Name <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th onclick="sortHistory('purpose')">Sit-In Purpose <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th onclick="sortHistory('lab')">Laboratory <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortHistory('pc_number')">PC <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th onclick="sortHistory('login_time')">Login <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th onclick="sortHistory('logout_time')">Logout <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th onclick="sortHistory('date')">Date <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
@@ -741,7 +747,7 @@
                   <label class="form-label fw-semibold">Purpose <span class="text-danger">*</span></label>
                   <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-code-slash"></i></span>
-                    <select class="form-select" id="resPurpose">
+                    <select class="form-select" id="resPurpose" onchange="onResFieldChange()">
                       <option value="" disabled selected>Select Purpose</option>
                       <option>C Programming</option>
                       <option>Java</option>
@@ -755,7 +761,7 @@
                   <label class="form-label fw-semibold">Lab <span class="text-danger">*</span></label>
                   <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-building"></i></span>
-                    <select class="form-select" id="resLab">
+                    <select class="form-select" id="resLab" onchange="onResFieldChange()">
                       <option value="" disabled selected>Select Lab</option>
                       <option>524</option>
                       <option>526</option>
@@ -775,21 +781,57 @@
                   </div>
                 </div>
               </div>
-    
-              <div class="row g-3 mb-4">
+
+              <div class="row g-3 mb-3">
                 <div class="col-md-6">
                   <label class="form-label fw-semibold">Time In <span class="text-danger">*</span></label>
                   <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-clock"></i></span>
-                    <input type="time" class="form-control" id="resTimeIn" />
+                    <select class="form-select" id="resTimeIn" onchange="onResFieldChange()">
+                      <option value="" disabled selected>Select Time</option>
+                      <option value="08:00">8:00 AM</option>
+                      <option value="09:00">9:00 AM</option>
+                      <option value="10:00">10:00 AM</option>
+                      <option value="11:00">11:00 AM</option>
+                      <option value="12:00">12:00 PM</option>
+                      <option value="13:00">1:00 PM</option>
+                      <option value="14:00">2:00 PM</option>
+                      <option value="15:00">3:00 PM</option>
+                      <option value="16:00">4:00 PM</option>
+                      <option value="17:00">5:00 PM</option>
+                      <option value="18:00">6:00 PM</option>
+                      <option value="19:00">7:00 PM</option>
+                      <option value="20:00">8:00 PM</option>
+                    </select>
                   </div>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label fw-semibold">Date <span class="text-danger">*</span></label>
                   <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
-                    <input type="date" class="form-control" id="resDate" />
+                    <input type="date" class="form-control" id="resDate" onchange="onResFieldChange()" />
                   </div>
+                </div>
+              </div>
+
+              <!-- PC Grid Panel -->
+              <div id="pcGridSection" style="display:none;">
+                <div class="pc-grid-header">
+                  <span class="pc-grid-title"><i class="bi bi-display me-2"></i>Select a PC</span>
+                  <div class="pc-grid-legend">
+                    <span class="pc-legend-item"><span class="pc-legend-dot available"></span>Available</span>
+                    <span class="pc-legend-item"><span class="pc-legend-dot reserved"></span>Reserved</span>
+                    <span class="pc-legend-item"><span class="pc-legend-dot maintenance"></span>Maintenance</span>
+                    <span class="pc-legend-item"><span class="pc-legend-dot selected"></span>Selected</span>
+                  </div>
+                </div>
+                <div class="pc-grid" id="pcGrid"></div>
+                <div id="pcGridLoading" class="pc-grid-loading" style="display:none;">
+                  <div class="spinner-border spinner-border-sm text-purple me-2"></div> Loading PCs...
+                </div>
+                <div id="selectedPcInfo" class="selected-pc-info" style="display:none;">
+                  <i class="bi bi-check-circle-fill me-1"></i>
+                  Selected: <strong id="selectedPcLabel">—</strong>
                 </div>
               </div>
     
@@ -817,6 +859,7 @@
                 <thead>
                   <tr>
                     <th>Purpose</th>
+                    <th>PC</th>
                     <th>Lab</th>
                     <th>Time In</th>
                     <th>Date</th>
@@ -874,6 +917,7 @@
                     <th onclick="sortSitin('name')">Name <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th onclick="sortSitin('purpose')">Purpose <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th onclick="sortSitin('lab')">Sit-In Lab <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortSitin('pc_number')">PC <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th onclick="sortSitin('sessions')">Session <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th onclick="sortSitin('status')">Status <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     <th>Actions</th>
@@ -1327,7 +1371,58 @@
         <p class="notif-empty">No notifications yet.</p>
       </div>
     </div>
-    <div id="notifOverlay" class="notif-overlay" style="display:none;" onclick="toggleNotifPanel()"></div>    
+    <div id="notifOverlay" class="notif-overlay" style="display:none;" onclick="toggleNotifPanel()"></div> 
+    
+    <!-- ===================== admin feedback reports page ===================== -->
+    <div id="page-adminfeedback" class="page">
+      <div class="history-page-wrapper">
+        <div class="history-container">
+          <div class="history-card">
+            <div class="history-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <h4 class="history-title mb-0"><i class="bi bi-chat-left-text me-2"></i>Feedback Reports</h4>
+              <button class="btn-student-action btn-add-student" onclick="printFeedbackReport()">
+                <i class="bi bi-printer-fill me-1"></i>Print Report
+              </button>
+            </div>
+            <div class="history-controls">
+              <div class="history-show">
+                <label>Show
+                  <select id="feedbackPageSize" onchange="renderFeedbackTable()">
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                  </select>
+                  entries
+                </label>
+              </div>
+              <div class="history-search">
+                <label>Search: <input type="text" id="feedbackSearch" oninput="renderFeedbackTable()" placeholder="Search..." /></label>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="history-table" id="feedbackTable">
+                <thead>
+                  <tr>
+                    <th onclick="sortFeedback('id_number')">Student ID Number <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortFeedback('name')">Name <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortFeedback('lab')">Laboratory <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortFeedback('date')">Date <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortFeedback('feedback')">Message <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                  </tr>
+                </thead>
+                <tbody id="feedbackTableBody">
+                  <tr><td colspan="5" class="text-center text-muted py-3">No feedback found.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="history-footer">
+              <div class="history-info" id="feedbackInfo">Showing 0 to 0 of 0 entries</div>
+              <div class="history-pagination" id="feedbackPagination"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>    
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="script.js"></script>
