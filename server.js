@@ -85,6 +85,26 @@ db.exec(`
   )
 `);
 
+// ── lab PCs table ──
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lab_pcs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    lab        TEXT NOT NULL,
+    pc_number  INTEGER NOT NULL,
+    status     TEXT DEFAULT 'available',
+    UNIQUE(lab, pc_number)
+  )
+`);
+
+// seed PCs for each lab if empty
+const labs = ['524', '526', '528', '530', '542', '544'];
+const insertPC = db.prepare(`INSERT OR IGNORE INTO lab_pcs (lab, pc_number, status) VALUES (?, ?, 'available')`);
+db.transaction(() => {
+  for (const lab of labs) {
+    for (let i = 1; i <= 50; i++) insertPC.run(lab, i);
+  }
+})();
+
 // ── notifications table ──
 db.exec(`
   CREATE TABLE IF NOT EXISTS notifications (
@@ -429,12 +449,12 @@ app.get('/api/reservations', authMiddleware, (req, res) => {
   res.json({ success: true, reservations });
 });
 
-// ── STUDENT: CREATE RESERVATION ──
+// ── STUDENT: CREATE RESERVATION (updated) ──
 app.post('/api/reservations', authMiddleware, (req, res) => {
-  const { purpose, lab, timeIn, date } = req.body;
+  const { purpose, lab, timeIn, date, pcNumber } = req.body;
   const idNumber = req.user.idNumber;
 
-  if (!purpose || !lab || !timeIn || !date)
+  if (!purpose || !lab || !timeIn || !date || !pcNumber)
     return res.json({ success: false, message: 'All fields are required.' });
 
   const student = db.prepare('SELECT * FROM students WHERE id_number = ?').get(idNumber);
@@ -442,13 +462,22 @@ app.post('/api/reservations', authMiddleware, (req, res) => {
   if (student.sessions <= 0) return res.json({ success: false, message: 'You have no remaining sessions.' });
 
   const existingPending = db.prepare(`SELECT id FROM reservations WHERE id_number = ? AND status = 'pending'`).get(idNumber);
-  if (existingPending) return res.json({ success: false, message: 'You already have a pending reservation. Please wait for it to be processed.' });
+  if (existingPending) return res.json({ success: false, message: 'You already have a pending reservation.' });
 
-  const conflict = db.prepare(`SELECT id FROM reservations WHERE lab = ? AND date = ? AND time_in = ? AND status IN ('pending', 'approved')`).get(lab, date, timeIn);
-  if (conflict) return res.json({ success: false, message: 'That lab slot is already taken. Please choose a different time or lab.' });
+  // check if this specific PC is already taken
+  const conflict = db.prepare(`
+    SELECT id FROM reservations
+    WHERE lab = ? AND date = ? AND time_in = ? AND pc_number = ? AND status IN ('pending', 'approved')
+  `).get(lab, date, timeIn, pcNumber);
+  if (conflict) return res.json({ success: false, message: 'That PC is already reserved for this slot.' });
 
-  db.prepare(`INSERT INTO reservations (id_number, last_name, first_name, purpose, lab, time_in, date) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(idNumber, student.last_name, student.first_name, purpose, lab, timeIn, date);
+  // check if PC is under maintenance
+  const pc = db.prepare('SELECT * FROM lab_pcs WHERE lab = ? AND pc_number = ?').get(lab, pcNumber);
+  if (!pc || pc.status === 'maintenance')
+    return res.json({ success: false, message: 'That PC is under maintenance.' });
+
+  db.prepare(`INSERT INTO reservations (id_number, last_name, first_name, purpose, lab, time_in, date, pc_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(idNumber, student.last_name, student.first_name, purpose, lab, timeIn, date, pcNumber);
 
   res.json({ success: true });
 });
@@ -544,6 +573,45 @@ app.delete('/api/notifications/:id', authMiddleware, (req, res) => {
 // ── STUDENT: CLEAR ALL NOTIFICATIONS ──
 app.delete('/api/notifications', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM notifications WHERE id_number = ?').run(req.user.idNumber);
+  res.json({ success: true });
+});
+
+// ── GET PC STATUS FOR A LAB ON A DATE/TIME ──
+app.get('/api/lab-pcs', authMiddleware, (req, res) => {
+  const { lab, date, timeIn } = req.query;
+  if (!lab || !date || !timeIn) return res.json({ success: false, message: 'Missing parameters.' });
+
+  const pcs = db.prepare('SELECT * FROM lab_pcs WHERE lab = ? ORDER BY pc_number ASC').all(lab);
+
+  // find reserved PCs for this lab/date/time
+  const reservedPCs = db.prepare(`
+    SELECT pc_number FROM reservations
+    WHERE lab = ? AND date = ? AND time_in = ? AND status IN ('pending', 'approved')
+  `).all(lab, date, timeIn).map(r => r.pc_number);
+
+  const result = pcs.map(pc => ({
+    ...pc,
+    effectiveStatus: pc.status === 'maintenance' ? 'maintenance'
+      : reservedPCs.includes(pc.pc_number) ? 'reserved'
+      : 'available'
+  }));
+
+  res.json({ success: true, pcs: result });
+});
+
+// ── ADMIN: GET PCs FOR A LAB ──
+app.get('/api/admin/lab-pcs/:lab', adminMiddleware, (req, res) => {
+  const pcs = db.prepare('SELECT * FROM lab_pcs WHERE lab = ? ORDER BY pc_number ASC').all(req.params.lab);
+  res.json({ success: true, pcs });
+});
+
+// ── ADMIN: UPDATE PC STATUS ──
+app.put('/api/admin/lab-pcs/:lab/:pcNumber', adminMiddleware, (req, res) => {
+  const { status } = req.body;
+  if (!['available', 'maintenance'].includes(status))
+    return res.json({ success: false, message: 'Invalid status.' });
+  db.prepare('UPDATE lab_pcs SET status = ? WHERE lab = ? AND pc_number = ?')
+    .run(status, req.params.lab, req.params.pcNumber);
   res.json({ success: true });
 });
 
