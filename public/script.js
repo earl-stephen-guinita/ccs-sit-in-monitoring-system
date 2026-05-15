@@ -106,7 +106,7 @@ function showPage(pageKey) {
     document.title = PAGE_TITLES[pageKey] || 'CCS Sit-In Monitoring';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (pageKey === 'profile') loadProfile();
-    if (pageKey === 'admin') loadAdminAnnouncements();
+    if (pageKey === 'admin') { loadAdminAnnouncements(); loadAdminStats(); }
     if (pageKey === 'history') loadHistory();
     if (pageKey === 'sitin') loadSitin();
     if (pageKey === 'students') loadStudents();
@@ -724,12 +724,25 @@ function loadAdminAnnouncements() {
   })
     .then(res => res.json())
     .then(result => {
-      const el = document.getElementById('adminAnnouncementsList');
-      if (!result.announcements || result.announcements.length === 0) {
-        el.innerHTML = '<p class="text-muted small">No announcements yet.</p>';
+      const el    = document.getElementById('adminAnnouncementsList');
+      const badge = document.getElementById('adminAnnCount');
+      const list  = result.announcements || [];
+
+      // update count badge
+      if (badge) {
+        if (list.length > 0) {
+          badge.textContent   = list.length;
+          badge.style.display = 'inline-flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+
+      if (list.length === 0) {
+        el.innerHTML = '<p class="text-muted small px-2 py-2 mb-0">No announcements yet.</p>';
         return;
       }
-      el.innerHTML = result.announcements.map(a => `
+      el.innerHTML = list.map(a => `
         <div class="admin-announcement-item">
           <div class="admin-announcement-item-title">${a.title}</div>
           <div class="admin-announcement-item-content">${a.content}</div>
@@ -743,6 +756,98 @@ function loadAdminAnnouncements() {
           </div>
         </div>
       `).join('');
+    })
+    .catch(() => {});
+}
+
+/* ── load admin dashboard stats + pie chart ── */
+function loadAdminStats() {
+  const token = localStorage.getItem('ccs_admin_token');
+
+  // fetch students count
+  fetch('/api/admin/students', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(res => res.json())
+    .then(result => {
+      document.getElementById('statStudentsRegistered').textContent =
+        result.students ? result.students.length : '0';
+    })
+    .catch(() => {});
+
+  // fetch sit-in logs for active count, total count, and pie data
+  fetch('/api/admin/sitin', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(res => res.json())
+    .then(result => {
+      const logs = result.logs || [];
+      const active = logs.filter(l => !l.logout_time).length;
+      document.getElementById('statCurrentSitin').textContent = active;
+      document.getElementById('statTotalSitin').textContent   = logs.length;
+
+      // tally by purpose
+      const tally = {};
+      for (const log of logs) {
+        tally[log.purpose] = (tally[log.purpose] || 0) + 1;
+      }
+
+      const labels  = Object.keys(tally);
+      const counts  = Object.values(tally);
+      const palette = ['#7c3aed','#f5a623','#10b981','#3b82f6','#ef4444','#a855f7'];
+
+      // draw pie chart on canvas
+      const canvas = document.getElementById('adminPieChart');
+      const ctx    = canvas.getContext('2d');
+      const total  = counts.reduce((a, b) => a + b, 0);
+      let startAngle = -Math.PI / 2;
+
+      ctx.clearRect(0, 0, 220, 220);
+
+      if (total === 0) {
+        ctx.beginPath();
+        ctx.arc(110, 110, 90, 0, Math.PI * 2);
+        ctx.fillStyle = '#e8d8ff';
+        ctx.fill();
+        ctx.fillStyle = '#9b72cf';
+        ctx.font = '600 13px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('No data yet', 110, 115);
+      } else {
+        labels.forEach((label, i) => {
+          const slice = (counts[i] / total) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(110, 110);
+          ctx.arc(110, 110, 90, startAngle, startAngle + slice);
+          ctx.closePath();
+          ctx.fillStyle = palette[i % palette.length];
+          ctx.fill();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          startAngle += slice;
+        });
+
+        // center hole (donut)
+        ctx.beginPath();
+        ctx.arc(110, 110, 48, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.fillStyle = '#2d0f5e';
+        ctx.font = '800 22px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText(total, 110, 118);
+      }
+
+      // legend
+      const legendEl = document.getElementById('adminPieLegend');
+      if (total === 0) {
+        legendEl.innerHTML = '<p class="text-muted small text-center">No sit-in records yet.</p>';
+      } else {
+        legendEl.innerHTML = labels.map((label, i) => `
+          <div class="pie-legend-item">
+            <div class="pie-legend-dot" style="background:${palette[i % palette.length]};"></div>
+            <span>${label}</span>
+            <span class="pie-legend-count">${counts[i]}</span>
+          </div>
+        `).join('');
+      }
     })
     .catch(() => {});
 }
@@ -779,6 +884,15 @@ function deleteAnnouncement(id) {
       if (result.success) loadAdminAnnouncements();
     })
     .catch(() => alert('Could not reach the server.'));
+}
+
+/* ── toggle admin posted announcements collapse ── */
+function toggleAdminAnnList() {
+  const collapse = document.getElementById('adminAnnouncementsCollapse');
+  const chevron  = document.getElementById('adminAnnChevron');
+  const isOpen   = collapse.classList.contains('open');
+  collapse.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('open', !isOpen);
 }
 
 /* ── history state ── */
