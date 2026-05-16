@@ -2436,3 +2436,58 @@ html, body {
   transition: background 0.15s;
 }
 .ann-att-file:hover { background: #ffd6d6; color: #991b1b; }
+
+/* ── Sit-In page tabs ── */
+.sitin-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.sitin-tab {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.75);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 10px;
+  padding: 0.55rem 1.3rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sitin-tab:hover {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+}
+
+.sitin-tab.active {
+  background: #fff;
+  color: #2d0f5e;
+  border-color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+
+.sitin-active-badge {
+  background: #10b981;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.active-duration {
+  color: #10b981;
+  font-weight: 700;
+  font-size: 0.8rem;
+}

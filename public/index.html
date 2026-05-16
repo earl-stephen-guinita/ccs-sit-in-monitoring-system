@@ -964,58 +964,126 @@
     <!-- ===================== admin sit-in page ===================== -->
     <div id="page-sitin" class="page">
       <div class="history-page-wrapper">
-        <div class="history-container">
-          <div class="history-card">
-            <div class="history-card-header">
-              <h4 class="history-title"><i class="bi bi-person-check me-2"></i>Current Sit-In</h4>
-            </div>
-            <div class="history-controls">
-              <div class="history-show">
-                <label>Show
-                  <select id="sitinPageSize" onchange="renderSitinTable()">
-                    <option value="10" selected>10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                  </select>
-                  entries
-                </label>
+        <div class="history-container" style="max-width:1200px;">
+
+          <!-- ── Tab Nav ── -->
+          <div class="sitin-tabs">
+            <button class="sitin-tab active" id="tabBtnSitinRecords" onclick="switchSitinTab('records')">
+              <i class="bi bi-person-check me-1"></i>Sit-In
+            </button>
+            <button class="sitin-tab" id="tabBtnSitinActive" onclick="switchSitinTab('active')">
+              <i class="bi bi-circle-fill me-1" style="font-size:0.55rem; color:#10b981;"></i>Active Students
+              <span class="sitin-active-badge" id="sitinActiveBadge" style="display:none;">0</span>
+            </button>
+          </div>
+
+          <!-- ══════════ TAB 1: ALL SIT-IN RECORDS ══════════ -->
+          <div id="sitinTabRecords">
+            <div class="history-card">
+              <div class="history-card-header">
+                <h4 class="history-title"><i class="bi bi-person-check me-2"></i>Sit-In Records</h4>
               </div>
-              <div class="d-flex align-items-center gap-2">
-                <div class="sitin-filter-btns">
-                  <button class="sitin-filter-btn active" id="filterAll" onclick="setSitinFilter('all')">All</button>
-                  <button class="sitin-filter-btn" id="filterActive" onclick="setSitinFilter('active')">Active</button>
-                  <button class="sitin-filter-btn" id="filterDone" onclick="setSitinFilter('done')">Done</button>
+              <div class="history-controls">
+                <div class="history-show">
+                  <label>Show
+                    <select id="sitinPageSize" onchange="renderSitinTable()">
+                      <option value="10" selected>10</option>
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                    </select>
+                    entries
+                  </label>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="sitin-filter-btns">
+                    <button class="sitin-filter-btn active" id="filterAll"    onclick="setSitinFilter('all')">All</button>
+                    <button class="sitin-filter-btn"        id="filterActive" onclick="setSitinFilter('active')">Active</button>
+                    <button class="sitin-filter-btn"        id="filterDone"   onclick="setSitinFilter('done')">Done</button>
+                  </div>
+                  <div class="history-search">
+                    <label>Search: <input type="text" id="sitinSearch" oninput="renderSitinTable()" placeholder="Search..." /></label>
+                  </div>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="history-table" id="sitinTable">
+                  <thead>
+                    <tr>
+                      <th onclick="sortSitin('id')">Sit-In ID <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortSitin('id_number')">ID Number <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortSitin('name')">Name <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortSitin('purpose')">Purpose <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortSitin('lab')">Lab <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortSitin('pc_number')">PC No. <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortSitin('sessions_at_sitin')">Sessions Left <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortSitin('status')">Status <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sitinTableBody">
+                    <tr><td colspan="9" class="text-center text-muted py-3">No records found.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="history-footer">
+                <div class="history-info" id="sitinInfo">Showing 0 to 0 of 0 entries</div>
+                <div class="history-pagination" id="sitinPagination"></div>
+              </div>
+            </div>
+          </div><!-- end tab records -->
+
+          <!-- ══════════ TAB 2: ACTIVE STUDENTS ONLY ══════════ -->
+          <div id="sitinTabActive" style="display:none;">
+            <div class="history-card">
+              <div class="history-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <h4 class="history-title mb-0"><i class="bi bi-circle-fill me-2" style="font-size:0.6rem; color:#10b981;"></i>Active Students</h4>
+                <button class="btn-res-refresh" onclick="loadActiveSitin()">
+                  <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                </button>
+              </div>
+              <div class="history-controls">
+                <div class="history-show">
+                  <label>Show
+                    <select id="activeSitinPageSize" onchange="renderActiveSitinTable()">
+                      <option value="10" selected>10</option>
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                    </select>
+                    entries
+                  </label>
                 </div>
                 <div class="history-search">
-                  <label>Search: <input type="text" id="sitinSearch" oninput="renderSitinTable()" placeholder="Search..." /></label>
+                  <label>Search: <input type="text" id="activeSitinSearch" oninput="renderActiveSitinTable()" placeholder="Search..." /></label>
                 </div>
               </div>
+              <div class="table-responsive">
+                <table class="history-table" id="activeSitinTable">
+                  <thead>
+                    <tr>
+                      <th onclick="sortActiveSitin('id')">Sit-In ID <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortActiveSitin('id_number')">ID Number <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortActiveSitin('name')">Name <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortActiveSitin('purpose')">Purpose <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortActiveSitin('lab')">Lab <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortActiveSitin('pc_number')">PC No. <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortActiveSitin('sessions_at_sitin')">Sessions Left <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortActiveSitin('login_time')">Time In <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th>Duration</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="activeSitinTableBody">
+                    <tr><td colspan="10" class="text-center text-muted py-3">No active sit-in sessions.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="history-footer">
+                <div class="history-info" id="activeSitinInfo">Showing 0 to 0 of 0 entries</div>
+                <div class="history-pagination" id="activeSitinPagination"></div>
+              </div>
             </div>
-            <div class="table-responsive">
-              <table class="history-table" id="sitinTable">
-                <thead>
-                  <tr>
-                    <th onclick="sortSitin('id')">Sit-In ID <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
-                    <th onclick="sortSitin('id_number')">ID Number <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
-                    <th onclick="sortSitin('name')">Name <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
-                    <th onclick="sortSitin('purpose')">Purpose <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
-                    <th onclick="sortSitin('lab')">Sit-In Lab <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
-                    <th onclick="sortSitin('pc_number')">PC <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
-                    <th onclick="sortSitin('sessions')">Session <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
-                    <th onclick="sortSitin('status')">Status <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="sitinTableBody">
-                  <tr><td colspan="8" class="text-center text-muted py-3">No records found.</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="history-footer">
-              <div class="history-info" id="sitinInfo">Showing 0 to 0 of 0 entries</div>
-              <div class="history-pagination" id="sitinPagination"></div>
-            </div>
-          </div>
+          </div><!-- end tab active -->
+
         </div>
       </div>
     </div>

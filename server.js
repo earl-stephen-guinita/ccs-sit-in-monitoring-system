@@ -282,19 +282,37 @@ app.post('/api/profile/update', authMiddleware, async (req, res) => {
 app.get('/api/admin/search-student', adminMiddleware, (req, res) => {
   const student = db.prepare('SELECT * FROM students WHERE id_number = ?').get(req.query.idNumber);
   if (!student) return res.json({ success: false, message: 'Student not found.' });
-  res.json({ success: true, student: { idNumber: student.id_number, firstName: student.first_name, lastName: student.last_name, sessions: student.sessions } });
+
+  // check if student has an approved reservation for today
+  const today = new Date().toISOString().split('T')[0];
+  const reservation = db.prepare(`
+    SELECT * FROM reservations
+    WHERE id_number = ? AND status = 'approved' AND date = ?
+    ORDER BY created_at DESC LIMIT 1
+  `).get(student.id_number, today);
+
+  res.json({
+    success: true,
+    student: {
+      idNumber: student.id_number,
+      firstName: student.first_name,
+      lastName: student.last_name,
+      sessions: student.sessions
+    },
+    reservation: reservation || null
+  });
 });
 
 // ── ADMIN: CONFIRM SIT-IN ──
 app.post('/api/admin/sit-in', adminMiddleware, (req, res) => {
-  const { idNumber, lastName, firstName, purpose, lab } = req.body;
+  const { idNumber, lastName, firstName, purpose, lab, pcNumber } = req.body;
   const student = db.prepare('SELECT * FROM students WHERE id_number = ?').get(idNumber);
   if (!student) return res.json({ success: false, message: 'Student not found.' });
   if (student.sessions <= 0) return res.json({ success: false, message: 'Student has no remaining sessions.' });
   const existingActive = db.prepare('SELECT id FROM sit_in_logs WHERE id_number = ? AND logout_time IS NULL').get(idNumber);
   if (existingActive) return res.json({ success: false, message: 'Student already has an active sit-in session.' });
-  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, sessions_at_sitin) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(idNumber, lastName, firstName, purpose, lab, student.sessions);
+  db.prepare(`INSERT INTO sit_in_logs (id_number, last_name, first_name, purpose, lab, pc_number, sessions_at_sitin) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(idNumber, lastName, firstName, purpose, lab, pcNumber || null, student.sessions);
   res.json({ success: true, remainingSessions: student.sessions });
 });
 

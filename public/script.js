@@ -1414,7 +1414,7 @@ function renderSitinTable() {
 
   document.querySelectorAll('#sitinTable .sort-btns').forEach(el => el.classList.remove('active'));
   const ths  = document.querySelectorAll('#sitinTable th');
-  const keys = ['id', 'id_number', 'name', 'purpose', 'lab', 'pc_number', 'sessions', 'status'];
+  const keys = ['id', 'id_number', 'name', 'purpose', 'lab', 'pc_number', 'sessions_at_sitin', 'status'];
   keys.forEach((k, i) => {
     if (k === sitinSortKey) ths[i].querySelector('.sort-btns').classList.add('active');
   });
@@ -3132,3 +3132,216 @@ function _openRecordsPrintWindow(rows, pdf) {
 </html>`);
   win.document.close();
 }
+
+/* ══════════════════════════════════════════════════════
+   SIT-IN PAGE — TWO TABS
+   Append this to the very bottom of script.js
+   ══════════════════════════════════════════════════════ */
+
+/* ── tab switcher ── */
+function switchSitinTab(tab) {
+  const isRecords = tab === 'records';
+  document.getElementById('sitinTabRecords').style.display = isRecords ? '' : 'none';
+  document.getElementById('sitinTabActive').style.display  = isRecords ? 'none' : '';
+  document.getElementById('tabBtnSitinRecords').classList.toggle('active', isRecords);
+  document.getElementById('tabBtnSitinActive').classList.toggle('active', !isRecords);
+  if (!isRecords) loadActiveSitin();
+}
+
+/* ── active students state ── */
+let activeSitinData    = [];
+let activeSitinSortKey = 'login_time';
+let activeSitinSortDir = 'desc';
+let activeSitinPage    = 1;
+let _activeDurationTimer = null;
+
+function _stopActiveDuration() {
+  if (_activeDurationTimer) { clearInterval(_activeDurationTimer); _activeDurationTimer = null; }
+}
+
+/* ── load active sit-ins (only rows with no logout_time) ── */
+function loadActiveSitin() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/sitin', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(res => res.json())
+    .then(result => {
+      // filter to active only
+      activeSitinData = (result.logs || []).filter(r => !r.logout_time);
+      activeSitinPage = 1;
+      _updateActiveBadge(activeSitinData.length);
+      renderActiveSitinTable();
+    })
+    .catch(() => {});
+}
+
+function _updateActiveBadge(count) {
+  const badge = document.getElementById('sitinActiveBadge');
+  if (!badge) return;
+  if (count > 0) { badge.textContent = count; badge.style.display = 'inline-flex'; }
+  else           { badge.style.display = 'none'; }
+}
+
+/* refresh badge without switching tabs */
+function _refreshActiveBadge() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/sitin', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(res => res.json())
+    .then(result => _updateActiveBadge((result.logs || []).filter(r => !r.logout_time).length))
+    .catch(() => {});
+}
+
+function sortActiveSitin(key) {
+  if (activeSitinSortKey === key) activeSitinSortDir = activeSitinSortDir === 'asc' ? 'desc' : 'asc';
+  else { activeSitinSortKey = key; activeSitinSortDir = 'asc'; }
+  activeSitinPage = 1;
+  renderActiveSitinTable();
+}
+
+function renderActiveSitinTable() {
+  _stopActiveDuration();
+  const pageSize = parseInt(document.getElementById('activeSitinPageSize').value);
+  const search   = (document.getElementById('activeSitinSearch').value || '').toLowerCase();
+
+  let filtered = activeSitinData.filter(r => {
+    const name = r.first_name + ' ' + r.last_name;
+    return (
+      String(r.id).includes(search) ||
+      r.id_number.toLowerCase().includes(search) ||
+      name.toLowerCase().includes(search) ||
+      r.purpose.toLowerCase().includes(search) ||
+      r.lab.toLowerCase().includes(search) ||
+      String(r.pc_number || '').includes(search)
+    );
+  });
+
+  filtered.sort((a, b) => {
+    let valA, valB;
+    if (activeSitinSortKey === 'name') {
+      valA = a.first_name + ' ' + a.last_name;
+      valB = b.first_name + ' ' + b.last_name;
+    } else {
+      valA = String(a[activeSitinSortKey] ?? '');
+      valB = String(b[activeSitinSortKey] ?? '');
+    }
+    if (valA < valB) return activeSitinSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return activeSitinSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const total = filtered.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (activeSitinPage > pages) activeSitinPage = pages;
+  const start = (activeSitinPage - 1) * pageSize;
+  const end   = Math.min(start + pageSize, total);
+  const paged = filtered.slice(start, end);
+
+  /* update sort icons */
+  document.querySelectorAll('#activeSitinTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#activeSitinTable th');
+  const keys = ['id','id_number','name','purpose','lab','pc_number','sessions_at_sitin','login_time','duration'];
+  keys.forEach((k, i) => {
+    if (k === activeSitinSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active');
+  });
+
+  const now   = new Date();
+  const tbody = document.getElementById('activeSitinTableBody');
+
+  if (paged.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">No active sit-in sessions.</td></tr>';
+  } else {
+    tbody.innerHTML = paged.map(r => {
+      const loginDt   = _parseSQLiteDateTime(r.login_time);
+      const ms        = loginDt ? now - loginDt : 0;
+      const timeInFmt = loginDt
+        ? loginDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '—';
+      return `<tr>
+        <td>${r.id}</td>
+        <td>${r.id_number}</td>
+        <td>${r.first_name} ${r.last_name}</td>
+        <td>${r.purpose}</td>
+        <td>${r.lab}</td>
+        <td>${r.pc_number ? 'PC ' + r.pc_number : '—'}</td>
+        <td>${r.sessions_at_sitin !== null && r.sessions_at_sitin !== undefined ? r.sessions_at_sitin : '—'}</td>
+        <td>${timeInFmt}</td>
+        <td><span class="active-duration" data-login="${r.login_time}">${_msToHMS(ms)}</span></td>
+        <td>
+          <button class="btn-logout-sitin" onclick="adminLogoutSitinFromActive(${r.id})">
+            <i class="bi bi-box-arrow-right me-1"></i>Logout
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('activeSitinInfo').textContent =
+    total === 0 ? 'Showing 0 to 0 of 0 entries'
+    : `Showing ${start + 1} to ${end} of ${total} entries`;
+
+  renderPagination('activeSitinPagination', activeSitinPage, pages, (p) => {
+    activeSitinPage = p; renderActiveSitinTable();
+  });
+
+  /* live duration ticker */
+  if (paged.length > 0) {
+    _activeDurationTimer = setInterval(() => {
+      const nowTick = new Date();
+      document.querySelectorAll('.active-duration[data-login]').forEach(el => {
+        const d = _parseSQLiteDateTime(el.dataset.login);
+        if (d) el.textContent = _msToHMS(nowTick - d);
+      });
+    }, 1000);
+  }
+}
+
+/* logout from active tab — reloads both tables */
+function adminLogoutSitinFromActive(id) {
+  if (!confirm('Log out this student? This will deduct 1 session.')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/sitin-logout/' + id, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        loadActiveSitin();   // refresh active tab
+        loadSitin();         // keep records tab in sync
+      } else {
+        alert(result.message || 'Failed to logout student.');
+      }
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+
+/* ── patch showPage: on entering sitin page, reset to tab 1 and refresh badge ── */
+const _origShowPageSitinTab = showPage;
+showPage = function (pageKey) {
+  if (pageKey !== 'sitin') _stopActiveDuration();
+  _origShowPageSitinTab(pageKey);
+  if (pageKey === 'sitin') {
+    switchSitinTab('records');   // always open on records tab
+    _refreshActiveBadge();       // update the badge count
+  }
+};
+
+/* ── also refresh badge after an admin logout from the records tab ── */
+const _origAdminLogoutSitin = adminLogoutSitin;
+adminLogoutSitin = function (id) {
+  if (!confirm('Log out this student? This will deduct 1 session.')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/sitin-logout/' + id, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        loadSitin();
+        _refreshActiveBadge();
+      } else {
+        alert(result.message || 'Failed to logout student.');
+      }
+    })
+    .catch(() => alert('Could not reach the server.'));
+};
