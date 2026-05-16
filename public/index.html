@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
   <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles_software.css" />
   <style>
     .page { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
     .page.active { display: block !important; visibility: visible !important; height: auto !important; overflow: visible !important; }
@@ -111,6 +112,12 @@
                 <a class="nav-link nav-pill" href="#" onclick="showPage('adminfeedback'); setAdminNav('adminfeedback'); return false;">
                   <i class="bi bi-chat-left-text me-1"></i>Feedback
                 </a>
+              <li class="nav-item" id="navAdminSoftware" style="display:none;">
+                <a class="nav-link nav-pill" href="#"
+                  onclick="showPage('software'); setAdminNav('software'); return false;">
+                  <i class="bi bi-display me-1"></i>Software
+                </a>
+              </li>  
               </li>
               <li class="nav-item" id="navAdminLogout" style="display:none;">
                 <a class="nav-link nav-pill" href="#" onclick="adminLogout(); return false;">Logout</a>
@@ -245,6 +252,23 @@
                 </div>
               </div>
             </div>
+
+            <div class="dash-card" id="dashSoftwareCard">
+              <div class="dash-card-title" onclick="toggleDashCard('dashSoftwareBody')">
+                <span><i class="bi bi-display me-2"></i>Lab Software Availability</span>
+                <i class="bi bi-chevron-down dash-chevron" id="chevron-dashSoftwareBody"></i>
+              </div>
+              <div class="dash-card-body" id="dashSoftwareBody">
+                <div class="dash-software-toolbar">
+                  <button class="btn-sw-export" onclick="exportSoftwareCSV()">
+                    <i class="bi bi-download me-1"></i>Export CSV
+                  </button>
+                </div>
+                <div id="dashSoftwareList">
+                  <p class="dash-empty">Loading software list…</p>
+                </div>
+              </div>
+            </div>            
           </div>
         </div>
       </section>
@@ -1486,9 +1510,81 @@
           </div>
         </div>
       </div>
-    </div>    
+    </div>   
+    
+    <div id="page-software" class="page">
+      <div class="history-page-wrapper">
+        <div class="history-container" style="max-width:1100px;">
+          <div class="history-card">
+            <div class="history-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <h4 class="history-title mb-0"><i class="bi bi-display me-2"></i>Lab Software Management</h4>
+              <div class="d-flex gap-2 flex-wrap">
+                <button class="btn-student-action btn-add-student" onclick="exportAdminSoftwareCSV()">
+                  <i class="bi bi-download me-1"></i>Export CSV
+                </button>
+                <label class="btn-student-action btn-reset-sessions"
+                      style="cursor:pointer; margin:0;" for="swCsvImport">
+                  <i class="bi bi-upload me-1"></i>Import CSV
+                </label>
+                <input type="file" id="swCsvImport" accept=".csv"
+                      style="display:none;" onchange="importSoftwareCSV(event)" />
+              </div>
+            </div>
+
+            <div class="sw-add-form-wrap">
+              <div class="sw-add-form-inner">
+                <div class="sw-add-form-title">
+                  <i class="bi bi-plus-circle me-1"></i>Add Software to Lab
+                </div>
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label fw-semibold mb-1">Laboratory</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-building"></i></span>
+                      <select class="form-select" id="swAddLab">
+                        <option value="" disabled selected>Select Lab</option>
+                        <option>524</option><option>526</option><option>528</option>
+                        <option>530</option><option>542</option><option>544</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label fw-semibold mb-1">Software Name</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-app"></i></span>
+                      <input type="text" class="form-control" id="swAddName"
+                        placeholder="e.g. Microsoft Office, PyCharm…"
+                        onkeydown="if(event.key==='Enter') addSoftwareEntry()" />
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <button class="btn btn-register w-100" onclick="addSoftwareEntry()">
+                      <i class="bi bi-plus-lg me-1"></i>Add
+                    </button>
+                  </div>
+                </div>
+                <div id="swAddError" class="alert alert-danger py-2 small mt-2"
+                    style="display:none;"></div>
+              </div>
+            </div>
+
+            <div class="sw-table-wrap" id="swAdminTableWrap">
+              <p class="text-muted text-center py-4 small">Loading…</p>
+            </div>
+
+            <div class="sw-csv-hint">
+              <i class="bi bi-info-circle me-1"></i>
+              CSV import format: two columns — <code>Laboratory</code> (e.g. <code>524</code>) and
+              <code>Software</code> (e.g. <code>Visual Studio Code</code>), one row per software entry.
+              Import mode replaces all existing data.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="script.js"></script>
+    <script src="script_software.js"></script>
   </body>
 </html>

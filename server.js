@@ -69,6 +69,7 @@ db.exec(`
 `);
 
 try { db.exec(`ALTER TABLE sit_in_logs ADD COLUMN sessions_at_sitin INTEGER`); } catch (e) {}
+try { db.exec(`ALTER TABLE sit_in_logs ADD COLUMN pc_number INTEGER`); } catch (e) {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS reservations (
@@ -119,6 +120,32 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
   )
 `);
+
+// ── lab software table ──
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lab_software (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    lab        TEXT NOT NULL,
+    software   TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(lab, software)
+  )
+`);
+
+// seed default software
+const DEFAULT_SOFTWARE = {
+  '524': ['Visual Studio', 'Visual Studio Code', 'Cisco Packet Tracer'],
+  '526': ['Visual Studio', 'Visual Studio Code'],
+  '528': ['Visual Studio', 'Visual Studio Code'],
+  '530': ['Visual Studio', 'Visual Studio Code', 'SQL Server Management Studio'],
+  '542': ['Visual Studio', 'Visual Studio Code'],
+  '544': ['Visual Studio', 'Visual Studio Code', 'VMware', 'Oracle VM VirtualBox'],
+};
+const insertSW = db.prepare(`INSERT OR IGNORE INTO lab_software (lab, software) VALUES (?, ?)`);
+db.transaction(() => {
+  for (const [lab, apps] of Object.entries(DEFAULT_SOFTWARE))
+    for (const app of apps) insertSW.run(lab, app);
+})();
 
 // ── helper: create a notification for one student ──
 function createNotification(idNumber, type, title, message) {
@@ -292,7 +319,6 @@ app.post('/api/admin/announcements', adminMiddleware, (req, res) => {
   const { title, content } = req.body;
   if (!title || !content) return res.json({ success: false, message: 'Title and content are required.' });
   db.prepare('INSERT INTO announcements (title, content) VALUES (?, ?)').run(title, content);
-  // notify every student
   notifyAllStudents(
     'announcement',
     `📢 New Announcement: ${title}`,
@@ -462,7 +488,7 @@ app.get('/api/reservations', authMiddleware, (req, res) => {
   res.json({ success: true, reservations });
 });
 
-// ── STUDENT: CREATE RESERVATION (updated) ──
+// ── STUDENT: CREATE RESERVATION ──
 app.post('/api/reservations', authMiddleware, (req, res) => {
   const { purpose, lab, timeIn, date, pcNumber } = req.body;
   const idNumber = req.user.idNumber;
@@ -477,14 +503,12 @@ app.post('/api/reservations', authMiddleware, (req, res) => {
   const existingPending = db.prepare(`SELECT id FROM reservations WHERE id_number = ? AND status = 'pending'`).get(idNumber);
   if (existingPending) return res.json({ success: false, message: 'You already have a pending reservation.' });
 
-  // check if this specific PC is already taken
   const conflict = db.prepare(`
     SELECT id FROM reservations
     WHERE lab = ? AND date = ? AND time_in = ? AND pc_number = ? AND status IN ('pending', 'approved')
   `).get(lab, date, timeIn, pcNumber);
   if (conflict) return res.json({ success: false, message: 'That PC is already reserved for this slot.' });
 
-  // check if PC is under maintenance
   const pc = db.prepare('SELECT * FROM lab_pcs WHERE lab = ? AND pc_number = ?').get(lab, pcNumber);
   if (!pc || pc.status === 'maintenance')
     return res.json({ success: false, message: 'That PC is under maintenance.' });
@@ -515,7 +539,7 @@ app.get('/api/admin/reservations', adminMiddleware, (req, res) => {
   res.json({ success: true, reservations });
 });
 
-// ── ADMIN: APPROVE RESERVATION → notify student ──
+// ── ADMIN: APPROVE RESERVATION ──
 app.put('/api/admin/reservations/:id/approve', adminMiddleware, (req, res) => {
   const r = db.prepare('SELECT * FROM reservations WHERE id = ?').get(req.params.id);
   if (!r) return res.json({ success: false, message: 'Reservation not found.' });
@@ -532,7 +556,7 @@ app.put('/api/admin/reservations/:id/approve', adminMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
-// ── ADMIN: REJECT RESERVATION → notify student ──
+// ── ADMIN: REJECT RESERVATION ──
 app.put('/api/admin/reservations/:id/reject', adminMiddleware, (req, res) => {
   const r = db.prepare('SELECT * FROM reservations WHERE id = ?').get(req.params.id);
   if (!r) return res.json({ success: false, message: 'Reservation not found.' });
@@ -551,7 +575,6 @@ app.put('/api/admin/reservations/:id/reject', adminMiddleware, (req, res) => {
 // NOTIFICATION ROUTES
 // ═══════════════════════════════════════════════════
 
-// ── STUDENT: GET OWN NOTIFICATIONS ──
 app.get('/api/notifications', authMiddleware, (req, res) => {
   const notifications = db.prepare(
     `SELECT * FROM notifications WHERE id_number = ? ORDER BY created_at DESC LIMIT 50`
@@ -562,28 +585,23 @@ app.get('/api/notifications', authMiddleware, (req, res) => {
   res.json({ success: true, notifications, unreadCount });
 });
 
-// ── STUDENT: MARK ONE AS READ ──
 app.put('/api/notifications/:id/read', authMiddleware, (req, res) => {
   db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND id_number = ?')
     .run(req.params.id, req.user.idNumber);
   res.json({ success: true });
 });
 
-// ── STUDENT: MARK ALL AS READ ──
 app.put('/api/notifications/read-all', authMiddleware, (req, res) => {
-  db.prepare('UPDATE notifications SET is_read = 1 WHERE id_number = ?')
-    .run(req.user.idNumber);
+  db.prepare('UPDATE notifications SET is_read = 1 WHERE id_number = ?').run(req.user.idNumber);
   res.json({ success: true });
 });
 
-// ── STUDENT: DELETE ONE NOTIFICATION ──
 app.delete('/api/notifications/:id', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM notifications WHERE id = ? AND id_number = ?')
     .run(req.params.id, req.user.idNumber);
   res.json({ success: true });
 });
 
-// ── STUDENT: CLEAR ALL NOTIFICATIONS ──
 app.delete('/api/notifications', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM notifications WHERE id_number = ?').run(req.user.idNumber);
   res.json({ success: true });
@@ -593,32 +611,25 @@ app.delete('/api/notifications', authMiddleware, (req, res) => {
 app.get('/api/lab-pcs', authMiddleware, (req, res) => {
   const { lab, date, timeIn } = req.query;
   if (!lab || !date || !timeIn) return res.json({ success: false, message: 'Missing parameters.' });
-
   const pcs = db.prepare('SELECT * FROM lab_pcs WHERE lab = ? ORDER BY pc_number ASC').all(lab);
-
-  // find reserved PCs for this lab/date/time
   const reservedPCs = db.prepare(`
     SELECT pc_number FROM reservations
     WHERE lab = ? AND date = ? AND time_in = ? AND status IN ('pending', 'approved')
   `).all(lab, date, timeIn).map(r => r.pc_number);
-
   const result = pcs.map(pc => ({
     ...pc,
     effectiveStatus: pc.status === 'maintenance' ? 'maintenance'
       : reservedPCs.includes(pc.pc_number) ? 'reserved'
       : 'available'
   }));
-
   res.json({ success: true, pcs: result });
 });
 
-// ── ADMIN: GET PCs FOR A LAB ──
 app.get('/api/admin/lab-pcs/:lab', adminMiddleware, (req, res) => {
   const pcs = db.prepare('SELECT * FROM lab_pcs WHERE lab = ? ORDER BY pc_number ASC').all(req.params.lab);
   res.json({ success: true, pcs });
 });
 
-// ── ADMIN: UPDATE PC STATUS ──
 app.put('/api/admin/lab-pcs/:lab/:pcNumber', adminMiddleware, (req, res) => {
   const { status } = req.body;
   if (!['available', 'maintenance'].includes(status))
@@ -626,6 +637,101 @@ app.put('/api/admin/lab-pcs/:lab/:pcNumber', adminMiddleware, (req, res) => {
   db.prepare('UPDATE lab_pcs SET status = ? WHERE lab = ? AND pc_number = ?')
     .run(status, req.params.lab, req.params.pcNumber);
   res.json({ success: true });
+});
+
+// ═══════════════════════════════════════════════════
+// LAB SOFTWARE ROUTES
+// ═══════════════════════════════════════════════════
+
+// helper: build per-lab grouped object
+function getLabSoftwareGrouped() {
+  const rows = db.prepare('SELECT * FROM lab_software ORDER BY lab ASC, software ASC').all();
+  const grouped = {};
+  for (const lab of labs) grouped[lab] = [];
+  for (const row of rows) {
+    if (!grouped[row.lab]) grouped[row.lab] = [];
+    grouped[row.lab].push({ id: row.id, software: row.software });
+  }
+  return grouped;
+}
+
+// ── STUDENT: GET LAB SOFTWARE ──
+app.get('/api/lab-software', authMiddleware, (req, res) => {
+  res.json({ success: true, software: getLabSoftwareGrouped() });
+});
+
+// ── STUDENT: EXPORT CSV ──
+app.get('/api/lab-software/export-csv', authMiddleware, (req, res) => {
+  const grouped = getLabSoftwareGrouped();
+  let csv = 'Laboratory,Available Software\n';
+  for (const [lab, entries] of Object.entries(grouped)) {
+    const apps = entries.map(e => e.software).join('; ');
+    csv += `"Lab ${lab}","${apps}"\n`;
+  }
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="lab-software.csv"');
+  res.send(csv);
+});
+
+// ── ADMIN: GET LAB SOFTWARE ──
+app.get('/api/admin/lab-software', adminMiddleware, (req, res) => {
+  res.json({ success: true, software: getLabSoftwareGrouped() });
+});
+
+// ── ADMIN: ADD ONE SOFTWARE ENTRY ──
+app.post('/api/admin/lab-software', adminMiddleware, (req, res) => {
+  const { lab, software } = req.body;
+  if (!lab || !software || !software.trim())
+    return res.json({ success: false, message: 'Lab and software name are required.' });
+  if (!labs.includes(lab))
+    return res.json({ success: false, message: 'Invalid lab.' });
+  try {
+    db.prepare('INSERT INTO lab_software (lab, software) VALUES (?, ?)').run(lab, software.trim());
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, message: 'That software already exists for this lab.' });
+  }
+});
+
+// ── ADMIN: DELETE ONE SOFTWARE ENTRY ──
+app.delete('/api/admin/lab-software/:id', adminMiddleware, (req, res) => {
+  db.prepare('DELETE FROM lab_software WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// ── ADMIN: IMPORT CSV (bulk replace or merge) ──
+// Body: { rows: [{lab, software}, ...], mode: 'merge'|'replace' }
+app.post('/api/admin/lab-software/import', adminMiddleware, (req, res) => {
+  const { rows, mode } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0)
+    return res.json({ success: false, message: 'No rows provided.' });
+
+  db.transaction(() => {
+    if (mode === 'replace') {
+      db.prepare('DELETE FROM lab_software').run();
+    }
+    const insert = db.prepare(`INSERT OR IGNORE INTO lab_software (lab, software) VALUES (?, ?)`);
+    for (const row of rows) {
+      if (row.lab && row.software && labs.includes(String(row.lab).trim())) {
+        insert.run(String(row.lab).trim(), String(row.software).trim());
+      }
+    }
+  })();
+
+  res.json({ success: true, software: getLabSoftwareGrouped() });
+});
+
+// ── ADMIN: EXPORT CSV ──
+app.get('/api/admin/lab-software/export-csv', adminMiddleware, (req, res) => {
+  const grouped = getLabSoftwareGrouped();
+  let csv = 'Laboratory,Available Software\n';
+  for (const [lab, entries] of Object.entries(grouped)) {
+    const apps = entries.map(e => e.software).join('; ');
+    csv += `"Lab ${lab}","${apps}"\n`;
+  }
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="lab-software.csv"');
+  res.send(csv);
 });
 
 app.listen(3000, () => console.log('Server running at http://localhost:3000'));

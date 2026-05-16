@@ -2306,3 +2306,325 @@ function printFeedbackReport() {
   printWindow.focus();
   printWindow.print();
 }
+
+/* ══════════════════════════════════════════════════════
+   LAB SOFTWARE — STUDENT DASHBOARD
+══════════════════════════════════════════════════════ */
+
+const LAB_ICONS = {
+  '524': 'bi-cpu',
+  '526': 'bi-pc-display',
+  '528': 'bi-pc-display',
+  '530': 'bi-database',
+  '542': 'bi-pc-display',
+  '544': 'bi-server',
+};
+
+function loadDashSoftware() {
+  if (!currentUser || !getToken()) return;
+  authFetch('/api/lab-software')
+    .then(res => res.json())
+    .then(result => {
+      if (!result.success) return;
+      renderDashSoftware(result.software);
+    })
+    .catch(() => {});
+}
+
+function renderDashSoftware(software) {
+  const el = document.getElementById('dashSoftwareList');
+  if (!el) return;
+  const labs = ['524', '526', '528', '530', '542', '544'];
+  let html = '';
+  for (const lab of labs) {
+    const entries = software[lab] || [];
+    const icon = LAB_ICONS[lab] || 'bi-pc-display';
+    html += `
+      <div class="dash-sw-lab-block">
+        <div class="dash-sw-lab-header">
+          <i class="bi ${icon} me-2"></i>Laboratory ${lab}
+          <span class="dash-sw-count">${entries.length} app${entries.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="dash-sw-tags">
+          ${entries.length === 0
+            ? '<span class="dash-sw-empty">No software listed.</span>'
+            : entries.map(e => `<span class="dash-sw-tag"><i class="bi bi-check-circle-fill me-1"></i>${e.software}</span>`).join('')
+          }
+        </div>
+      </div>
+    `;
+  }
+  el.innerHTML = html;
+}
+
+function exportSoftwareCSV() {
+  const token = getToken();
+  if (!token) return;
+  const a = document.createElement('a');
+  a.href = '/api/lab-software/export-csv';
+  // Pass token via query param workaround for direct download
+  // We fetch and trigger download manually
+  authFetch('/api/lab-software/export-csv')
+    .then(res => res.text())
+    .then(csv => {
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'lab-software.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    })
+    .catch(() => alert('Could not export CSV.'));
+}
+
+/* ══════════════════════════════════════════════════════
+   LAB SOFTWARE — ADMIN MANAGEMENT
+══════════════════════════════════════════════════════ */
+
+let adminSoftwareData = {};
+
+function loadAdminSoftware() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/lab-software', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (!result.success) return;
+      adminSoftwareData = result.software;
+      renderAdminSoftwareTable(result.software);
+    })
+    .catch(() => {});
+}
+
+function renderAdminSoftwareTable(software) {
+  const wrap = document.getElementById('swAdminTableWrap');
+  if (!wrap) return;
+  const labs = ['524', '526', '528', '530', '542', '544'];
+  let html = '<div class="sw-admin-grid">';
+  for (const lab of labs) {
+    const entries = software[lab] || [];
+    html += `
+      <div class="sw-admin-lab-card">
+        <div class="sw-admin-lab-header">
+          <i class="bi bi-building me-2"></i>Laboratory ${lab}
+          <span class="sw-admin-count">${entries.length}</span>
+        </div>
+        <div class="sw-admin-entries">
+          ${entries.length === 0
+            ? '<p class="sw-admin-empty">No software listed.</p>'
+            : entries.map(e => `
+                <div class="sw-admin-entry">
+                  <span><i class="bi bi-check-circle-fill sw-entry-icon me-2"></i>${e.software}</span>
+                  <button class="btn-sw-delete" onclick="deleteSoftwareEntry(${e.id})" title="Remove">
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </div>
+              `).join('')
+          }
+        </div>
+      </div>
+    `;
+  }
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+function addSoftwareEntry() {
+  const lab      = document.getElementById('swAddLab').value;
+  const software = document.getElementById('swAddName').value.trim();
+  const errEl    = document.getElementById('swAddError');
+  errEl.style.display = 'none';
+
+  if (!lab) {
+    errEl.textContent = 'Please select a laboratory.';
+    errEl.style.display = '';
+    return;
+  }
+  if (!software) {
+    errEl.textContent = 'Please enter a software name.';
+    errEl.style.display = '';
+    return;
+  }
+
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/lab-software', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ lab, software }),
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        document.getElementById('swAddName').value = '';
+        document.getElementById('swAddLab').value  = '';
+        loadAdminSoftware();
+      } else {
+        errEl.textContent   = result.message || 'Failed to add software.';
+        errEl.style.display = '';
+      }
+    })
+    .catch(() => {
+      errEl.textContent   = 'Could not reach the server.';
+      errEl.style.display = '';
+    });
+}
+
+function deleteSoftwareEntry(id) {
+  if (!confirm('Remove this software entry?')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/lab-software/' + id, {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + token },
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) loadAdminSoftware();
+      else alert(result.message || 'Failed to delete.');
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+
+function exportAdminSoftwareCSV() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/lab-software/export-csv', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.text())
+    .then(csv => {
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'lab-software.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    })
+    .catch(() => alert('Could not export CSV.'));
+}
+
+function importSoftwareCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const text = e.target.result;
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+    // detect header
+    const startIdx = lines[0].toLowerCase().includes('lab') ? 1 : 0;
+    const rows = [];
+
+    for (let i = startIdx; i < lines.length; i++) {
+      // simple CSV parse (handles quoted fields)
+      const cols = parseCSVLine(lines[i]);
+      if (cols.length < 2) continue;
+      const lab      = cols[0].trim().replace(/^Lab\s*/i, '');
+      const software = cols[1].trim();
+      if (lab && software) rows.push({ lab, software });
+    }
+
+    if (rows.length === 0) {
+      alert('No valid rows found in CSV. Check the format and try again.');
+      event.target.value = '';
+      return;
+    }
+
+    if (!confirm(`Import ${rows.length} software entries? This will REPLACE all existing software data.`)) {
+      event.target.value = '';
+      return;
+    }
+
+    const token = localStorage.getItem('ccs_admin_token');
+    fetch('/api/admin/lab-software/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ rows, mode: 'replace' }),
+    })
+      .then(res => res.json())
+      .then(result => {
+        event.target.value = '';
+        if (result.success) {
+          adminSoftwareData = result.software;
+          renderAdminSoftwareTable(result.software);
+          alert(`✓ Imported ${rows.length} software entries successfully.`);
+        } else {
+          alert(result.message || 'Import failed.');
+        }
+      })
+      .catch(() => {
+        event.target.value = '';
+        alert('Could not reach the server.');
+      });
+  };
+  reader.readAsText(file);
+}
+
+/* ── simple CSV line parser (handles quoted fields) ── */
+function parseCSVLine(line) {
+  const result = [];
+  let current  = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+/* ── patch showPage to load software page ── */
+const _origShowPage = showPage;
+showPage = function (pageKey) {
+  _origShowPage(pageKey);
+  if (pageKey === 'software') loadAdminSoftware();
+};
+
+/* ── patch loadDashboard to also load software ── */
+const _origLoadDashboard = loadDashboard;
+loadDashboard = function () {
+  _origLoadDashboard();
+  loadDashSoftware();
+};
+
+/* ── patch showAdminNav to include software nav item ── */
+const _origShowAdminNav = showAdminNav;
+showAdminNav = function () {
+  _origShowAdminNav();
+  const swNav = document.getElementById('navAdminSoftware');
+  if (swNav) swNav.style.display = '';
+};
+
+/* ── patch adminLogout to hide software nav item ── */
+const _origAdminLogout = adminLogout;
+adminLogout = function () {
+  const swNav = document.getElementById('navAdminSoftware');
+  if (swNav) swNav.style.display = 'none';
+  _origAdminLogout();
+};
+
+/* ── patch setAdminNav to handle 'software' ── */
+const _origSetAdminNav = setAdminNav;
+setAdminNav = function (page) {
+  _origSetAdminNav(page);
+  const swNav = document.getElementById('navAdminSoftware');
+  if (swNav) swNav.classList.toggle('active', page === 'software');
+};
+
+/* ── restore software on DOMContentLoaded if admin token present ── */
+document.addEventListener('DOMContentLoaded', function () {
+  const adminToken = localStorage.getItem('ccs_admin_token');
+  if (adminToken) {
+    const swNav = document.getElementById('navAdminSoftware');
+    if (swNav) swNav.style.display = '';
+  }
+});
