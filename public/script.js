@@ -108,6 +108,7 @@ function showPage(pageKey) {
     if (pageKey === 'profile') loadProfile();
     if (pageKey === 'admin') { loadAdminAnnouncements(); loadAdminStats(); }
     if (pageKey === 'history') loadHistory();
+    if (pageKey !== 'history') _stopLiveDuration();
     if (pageKey === 'sitin') loadSitin();
     if (pageKey === 'students') loadStudents();
     if (pageKey === 'reservation') { loadReservationForm(); loadReservations(); }
@@ -901,13 +902,144 @@ let historySortKey = 'date';
 let historySortDir = 'desc';
 let historyPage = 1;
 
+/* ── live duration ticker ── */
+let _liveDurationTimer = null;
+
+function _stopLiveDuration() {
+  if (_liveDurationTimer) { clearInterval(_liveDurationTimer); _liveDurationTimer = null; }
+}
+
+function _msToHMS(ms) {
+  if (ms < 0) ms = 0;
+  const totalSecs = Math.floor(ms / 1000);
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function _msToHMShort(ms) {
+  if (ms < 0) ms = 0;
+  const totalMins = Math.floor(ms / 60000);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function _parseSQLiteDateTime(str) {
+  if (!str) return null;
+  return new Date(str.replace(' ', 'T'));
+}
+
+/* ── render sessions table + summary ── */
+function renderSessionsAndSummary(logs) {
+  _stopLiveDuration();
+
+  const tbody = document.getElementById('sessionsTableBody');
+  if (!logs || logs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No sessions yet.</td></tr>';
+    document.getElementById('summaryTotalHours').textContent   = '0h 0m';
+    document.getElementById('summaryNumSessions').textContent  = '0';
+    document.getElementById('summaryAvgDuration').textContent  = '—';
+    document.getElementById('summaryLongest').textContent      = '—';
+    return;
+  }
+
+  // sort newest first
+  const sorted = [...logs].sort((a, b) => {
+    const da = _parseSQLiteDateTime(a.login_time) || 0;
+    const db2 = _parseSQLiteDateTime(b.login_time) || 0;
+    return db2 - da;
+  });
+
+  function buildRows() {
+    const now = new Date();
+    tbody.innerHTML = sorted.map(r => {
+      const loginDt  = _parseSQLiteDateTime(r.login_time);
+      const logoutDt = _parseSQLiteDateTime(r.logout_time);
+      const isActive = !r.logout_time;
+
+      let durationStr, statusHtml;
+      if (isActive) {
+        const ms = loginDt ? now - loginDt : 0;
+        durationStr = `<span class="duration-live" data-login="${r.login_time}">` +
+                      _msToHMS(ms) + `</span>`;
+        statusHtml  = '<span class="sitin-status active">Active</span>';
+      } else {
+        const ms = (loginDt && logoutDt) ? logoutDt - loginDt : 0;
+        durationStr = _msToHMShort(ms);
+        statusHtml  = '<span class="sitin-status done">Done</span>';
+      }
+
+      const timeIn  = loginDt  ? loginDt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—';
+      const timeOut = logoutDt ? logoutDt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—';
+      const dateFmt = r.date || '—';
+      const pcNo    = r.pc_number ? 'PC ' + r.pc_number : '—';
+      const lab     = r.lab || '—';
+
+      return `<tr>
+        <td>${dateFmt}</td>
+        <td>${timeIn}</td>
+        <td>${timeOut}</td>
+        <td>${durationStr}</td>
+        <td>${pcNo}</td>
+        <td>${lab}</td>
+        <td>${statusHtml}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  buildRows();
+
+  // tick live durations every second
+  const hasActive = sorted.some(r => !r.logout_time);
+  if (hasActive) {
+    _liveDurationTimer = setInterval(() => {
+      const now = new Date();
+      document.querySelectorAll('.duration-live[data-login]').forEach(el => {
+        const loginDt = _parseSQLiteDateTime(el.dataset.login);
+        if (loginDt) el.textContent = _msToHMS(now - loginDt);
+      });
+    }, 1000);
+  }
+
+  // ── compute summary ──
+  let totalMs   = 0;
+  let longestMs = 0;
+  let counted   = 0;
+  const now = new Date();
+
+  sorted.forEach(r => {
+    const loginDt  = _parseSQLiteDateTime(r.login_time);
+    const logoutDt = _parseSQLiteDateTime(r.logout_time);
+    const ms = loginDt
+      ? (logoutDt ? logoutDt - loginDt : now - loginDt)
+      : 0;
+    totalMs += ms;
+    if (ms > longestMs) longestMs = ms;
+    counted++;
+  });
+
+  const avgMs = counted > 0 ? totalMs / counted : 0;
+
+  document.getElementById('summaryTotalHours').textContent   = _msToHMShort(totalMs);
+  document.getElementById('summaryNumSessions').textContent  = counted;
+  document.getElementById('summaryAvgDuration').textContent  = counted > 0 ? _msToHMShort(avgMs) : '—';
+  document.getElementById('summaryLongest').textContent      = longestMs > 0 ? _msToHMShort(longestMs) : '—';
+}
+
 /* ── load history ── */
 function loadHistory() {
+  _stopLiveDuration();
   authFetch('/api/history')
     .then(res => res.json())
     .then(result => {
       historyData = result.logs || [];
       historyPage = 1;
+      renderSessionsAndSummary(historyData);
       renderHistoryTable();
     })
     .catch(() => {});

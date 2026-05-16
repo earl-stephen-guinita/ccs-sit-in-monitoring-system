@@ -674,6 +674,74 @@
           <button class="btn btn-back mb-4" onclick="showPage('home')">
             <i class="bi bi-arrow-left me-1"></i> Back
           </button>
+
+          <!-- ── Sit-In Summary Cards ── -->
+          <div class="sitin-summary-grid mb-4">
+            <div class="sitin-summary-card">
+              <div class="sitin-summary-icon" style="background:#e0ccff; color:#4a1d7e;">
+                <i class="bi bi-clock-fill"></i>
+              </div>
+              <div class="sitin-summary-text">
+                <span class="sitin-summary-label">Total Sit-In Hours</span>
+                <span class="sitin-summary-value" id="summaryTotalHours">—</span>
+              </div>
+            </div>
+            <div class="sitin-summary-card">
+              <div class="sitin-summary-icon" style="background:#d1fae5; color:#065f46;">
+                <i class="bi bi-person-check-fill"></i>
+              </div>
+              <div class="sitin-summary-text">
+                <span class="sitin-summary-label">Number of Sessions</span>
+                <span class="sitin-summary-value" id="summaryNumSessions">—</span>
+              </div>
+            </div>
+            <div class="sitin-summary-card">
+              <div class="sitin-summary-icon" style="background:#fef3c7; color:#92400e;">
+                <i class="bi bi-bar-chart-fill"></i>
+              </div>
+              <div class="sitin-summary-text">
+                <span class="sitin-summary-label">Average Session Duration</span>
+                <span class="sitin-summary-value" id="summaryAvgDuration">—</span>
+              </div>
+            </div>
+            <div class="sitin-summary-card">
+              <div class="sitin-summary-icon" style="background:#fee2e2; color:#991b1b;">
+                <i class="bi bi-trophy-fill"></i>
+              </div>
+              <div class="sitin-summary-text">
+                <span class="sitin-summary-label">Longest Session</span>
+                <span class="sitin-summary-value" id="summaryLongest">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Sessions Table ── -->
+          <div class="history-card mb-4">
+            <div class="history-card-header d-flex align-items-center justify-content-between">
+              <h4 class="history-title mb-0"><i class="bi bi-table me-2"></i>Sessions</h4>
+              <span class="sessions-live-badge"><i class="bi bi-circle-fill me-1"></i>Live</span>
+            </div>
+            <div class="table-responsive">
+              <table class="history-table" id="sessionsTable">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Time In</th>
+                    <th>Time Out</th>
+                    <th>Duration</th>
+                    <th>PC No.</th>
+                    <th>Lab</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="sessionsTableBody">
+                  <tr><td colspan="7" class="text-center text-muted py-3">No sessions yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ── History / Feedback Table ── -->
           <div class="history-card">
             <div class="history-card-header">
               <h4 class="history-title"><i class="bi bi-clock-history me-2"></i>History Information</h4>
@@ -709,7 +777,7 @@
                   </tr>
                 </thead>
                 <tbody id="historyTableBody">
-                  <tr><td colspan="8" class="text-center text-muted py-3">No records found.</td></tr>
+                  <tr><td colspan="9" class="text-center text-muted py-3">No records found.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -718,6 +786,7 @@
               <div class="history-pagination" id="historyPagination"></div>
             </div>
           </div>
+
         </div>
       </div>
     </div>

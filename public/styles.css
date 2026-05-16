@@ -2125,3 +2125,96 @@ html, body {
   font-size: 0.76rem;
   color: #2d0f5e;
 }
+
+/* ---------- sit-in summary cards ---------- */
+.sitin-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .sitin-summary-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .sitin-summary-grid { grid-template-columns: 1fr; }
+}
+
+.sitin-summary-card {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.sitin-summary-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.sitin-summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.sitin-summary-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #9b72cf;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sitin-summary-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #2d0f5e;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* live badge */
+.sessions-live-badge {
+  background: #d1fae5;
+  color: #065f46;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.65rem;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  animation: pulse-live 2s ease-in-out infinite;
+}
+
+.sessions-live-badge .bi-circle-fill {
+  font-size: 0.45rem;
+  color: #10b981;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+/* active duration cell */
+.duration-live {
+  color: #10b981;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
