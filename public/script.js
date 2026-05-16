@@ -704,13 +704,26 @@ function loadDashboard() {
             el.innerHTML = '<p class="dash-empty">No announcements yet.</p>';
             return;
           }
-          el.innerHTML = result.announcements.map(a => `
-            <div class="dash-announcement-item">
-              <div class="dash-announcement-title">${a.title}</div>
-              <div class="dash-announcement-content">${a.content}</div>
-              <div class="dash-announcement-date">${a.created_at}</div>
-            </div>
-          `).join('');
+          el.innerHTML = result.announcements.map(a => {
+            const att = a.attachment ? (() => { try { return JSON.parse(a.attachment); } catch { return null; } })() : null;
+            const attHtml = att ? `
+              <div class="ann-att-preview mt-2">
+                ${att.type && att.type.startsWith('image/')
+                  ? `<img src="${att.data}" alt="${att.name}" class="ann-att-img" onclick="window.open('${att.data}')" />`
+                  : `<a href="${att.data}" download="${att.name}" class="ann-att-file">
+                      <i class="bi bi-file-earmark-pdf me-1"></i>${att.name}
+                    </a>`
+                }
+              </div>` : '';
+            return `
+              <div class="dash-announcement-item">
+                <div class="dash-announcement-title">${a.title}</div>
+                <div class="dash-announcement-content">${a.content}</div>
+                ${attHtml}
+                <div class="dash-announcement-date">${a.created_at}</div>
+              </div>
+            `;
+          }).join('');
         })
         .catch(() => {});
 
@@ -775,20 +788,33 @@ function loadAdminAnnouncements() {
         el.innerHTML = '<p class="text-muted small px-2 py-2 mb-0">No announcements yet.</p>';
         return;
       }
-      el.innerHTML = list.map(a => `
-        <div class="admin-announcement-item">
-          <div class="admin-announcement-item-title">${a.title}</div>
-          <div class="admin-announcement-item-content">${a.content}</div>
-          <div class="admin-announcement-actions">
-            <button class="btn-ann-edit" onclick="editAnnouncement(${a.id}, '${encodeURIComponent(a.title)}', '${encodeURIComponent(a.content)}')">
-              <i class="bi bi-pencil-fill me-1"></i>Edit
-            </button>
-            <button class="btn-ann-delete" onclick="deleteAnnouncement(${a.id})">
-              <i class="bi bi-trash-fill me-1"></i>Delete
-            </button>
+      el.innerHTML = list.map(a => {
+        const att = a.attachment ? (() => { try { return JSON.parse(a.attachment); } catch { return null; } })() : null;
+        const attHtml = att ? `
+          <div class="ann-att-preview">
+            ${att.type && att.type.startsWith('image/')
+              ? `<img src="${att.data}" alt="${att.name}" class="ann-att-img" onclick="window.open('${att.data}')" />`
+              : `<a href="${att.data}" download="${att.name}" class="ann-att-file">
+                  <i class="bi bi-file-earmark-pdf me-1"></i>${att.name}
+                </a>`
+            }
+          </div>` : '';
+        return `
+          <div class="admin-announcement-item">
+            <div class="admin-announcement-item-title">${a.title}</div>
+            <div class="admin-announcement-item-content">${a.content}</div>
+            ${attHtml}
+            <div class="admin-announcement-actions">
+              <button class="btn-ann-edit" onclick="editAnnouncement(${a.id}, '${encodeURIComponent(a.title)}', '${encodeURIComponent(a.content)}')">
+                <i class="bi bi-pencil-fill me-1"></i>Edit
+              </button>
+              <button class="btn-ann-delete" onclick="deleteAnnouncement(${a.id})">
+                <i class="bi bi-trash-fill me-1"></i>Delete
+              </button>
+            </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     })
     .catch(() => {});
 }

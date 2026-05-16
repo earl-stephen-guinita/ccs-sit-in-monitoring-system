@@ -53,6 +53,8 @@ db.exec(`
   )
 `);
 
+try { db.exec(`ALTER TABLE announcements ADD COLUMN attachment TEXT`); } catch (e) {}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS sit_in_logs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -316,9 +318,10 @@ app.get('/api/announcements', authMiddleware, (req, res) => {
 
 // ── ADMIN: ADD ANNOUNCEMENT → notify all students ──
 app.post('/api/admin/announcements', adminMiddleware, (req, res) => {
-  const { title, content } = req.body;
+  const { title, content, attachment } = req.body;
   if (!title || !content) return res.json({ success: false, message: 'Title and content are required.' });
-  db.prepare('INSERT INTO announcements (title, content) VALUES (?, ?)').run(title, content);
+  const attachJson = attachment ? JSON.stringify(attachment) : null;
+  db.prepare('INSERT INTO announcements (title, content, attachment) VALUES (?, ?, ?)').run(title, content, attachJson);
   notifyAllStudents(
     'announcement',
     `📢 New Announcement: ${title}`,
@@ -329,8 +332,10 @@ app.post('/api/admin/announcements', adminMiddleware, (req, res) => {
 
 // ── ADMIN: EDIT ANNOUNCEMENT ──
 app.put('/api/admin/announcements/:id', adminMiddleware, (req, res) => {
-  db.prepare(`UPDATE announcements SET title=?, content=?, updated_at=datetime('now','localtime') WHERE id=?`)
-    .run(req.body.title, req.body.content, req.params.id);
+  const { title, content, attachment } = req.body;
+  const attachJson = attachment ? JSON.stringify(attachment) : null;
+  db.prepare(`UPDATE announcements SET title=?, content=?, attachment=?, updated_at=datetime('now','localtime') WHERE id=?`)
+    .run(title, content, attachJson, req.params.id);
   res.json({ success: true });
 });
 
