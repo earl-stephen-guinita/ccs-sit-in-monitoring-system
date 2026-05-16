@@ -112,6 +112,12 @@
                 <a class="nav-link nav-pill" href="#" onclick="showPage('adminfeedback'); setAdminNav('adminfeedback'); return false;">
                   <i class="bi bi-chat-left-text me-1"></i>Feedback
                 </a>
+              <li class="nav-item" id="navAdminRecords" style="display:none;">
+                <a class="nav-link nav-pill" href="#"
+                  onclick="showPage('records'); setAdminNav('records'); return false;">
+                  <i class="bi bi-journal-text me-1"></i>Reports
+                </a>
+              </li>  
               <li class="nav-item" id="navAdminSoftware" style="display:none;">
                 <a class="nav-link nav-pill" href="#"
                   onclick="showPage('software'); setAdminNav('software'); return false;">
@@ -1646,6 +1652,137 @@
               CSV import format: two columns — <code>Laboratory</code> (e.g. <code>524</code>) and
               <code>Software</code> (e.g. <code>Visual Studio Code</code>), one row per software entry.
               Import mode replaces all existing data.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== admin records page ===================== -->
+    <div id="page-records" class="page">
+      <div class="history-page-wrapper">
+        <div class="history-container" style="max-width:1200px;">
+          <div class="history-card">
+            <div class="history-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <h4 class="history-title mb-0">
+                <i class="bi bi-journal-text me-2"></i>Generate Reports
+              </h4>
+            </div>
+
+            <!-- ── date filter bar ── -->
+            <div class="records-filter-bar">
+              <div class="records-filter-inner">
+                <div class="records-date-group">
+                  <label class="records-date-label">From</label>
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                    <input type="date" class="form-control" id="recordsDateFrom" />
+                  </div>
+                </div>
+                <div class="records-date-group">
+                  <label class="records-date-label">To</label>
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                    <input type="date" class="form-control" id="recordsDateTo" />
+                  </div>
+                </div>
+                <div class="records-filter-btns">
+                  <button class="btn-records-search" onclick="searchRecords()">
+                    <i class="bi bi-search me-1"></i>Search
+                  </button>
+                  <button class="btn-records-reset" onclick="resetRecords()">
+                    <i class="bi bi-x-circle me-1"></i>Reset
+                  </button>
+                </div>
+              </div>
+
+              <!-- ── export buttons ── -->
+              <div class="records-export-btns">
+                <button class="btn-records-export csv" onclick="exportRecordsCSV()">
+                  <i class="bi bi-filetype-csv me-1"></i>CSV
+                </button>
+                <button class="btn-records-export excel" onclick="exportRecordsExcel()">
+                  <i class="bi bi-file-earmark-spreadsheet me-1"></i>Excel
+                </button>
+                <button class="btn-records-export pdf" onclick="exportRecordsPDF()">
+                  <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+                </button>
+                <button class="btn-records-export print" onclick="printRecords()">
+                  <i class="bi bi-printer-fill me-1"></i>Print
+                </button>
+              </div>
+            </div>
+
+            <!-- ── show/search controls ── -->
+            <div class="history-controls">
+              <div class="history-show">
+                <label>Show
+                  <select id="recordsPageSize" onchange="renderRecordsTable()">
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                  entries
+                </label>
+              </div>
+              <div class="records-count-badge" id="recordsCountBadge" style="display:none;">
+                <i class="bi bi-table me-1"></i>
+                <span id="recordsCountText">0 records</span>
+              </div>
+              <div class="history-search">
+                <label>Search: <input type="text" id="recordsSearch"
+                  oninput="renderRecordsTable()" placeholder="Search..." /></label>
+              </div>
+            </div>
+
+            <!-- ── table ── -->
+            <div class="table-responsive">
+              <table class="history-table" id="recordsTable">
+                <thead>
+                  <tr>
+                    <th onclick="sortRecords('id_number')">
+                      ID Number <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span>
+                    </th>
+                    <th onclick="sortRecords('name')">
+                      Name <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span>
+                    </th>
+                    <th onclick="sortRecords('purpose')">
+                      Purpose <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span>
+                    </th>
+                    <th onclick="sortRecords('lab')">
+                      Laboratory <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span>
+                    </th>
+                    <th onclick="sortRecords('pc_number')">
+                      PC No. <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span>
+                    </th>
+                    <th onclick="sortRecords('date')">
+                      Date <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span>
+                    </th>
+                    <th onclick="sortRecords('login_time')">
+                      Login <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span>
+                    </th>
+                    <th onclick="sortRecords('logout_time')">
+                      Logout <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span>
+                    </th>
+                    <th onclick="sortRecords('duration')">
+                      Duration <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="recordsTableBody">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted py-4">
+                      <i class="bi bi-search me-2"></i>Use the date filter above or click Search to load records.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="history-footer">
+              <div class="history-info" id="recordsInfo">Showing 0 to 0 of 0 entries</div>
+              <div class="history-pagination" id="recordsPagination"></div>
             </div>
           </div>
         </div>

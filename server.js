@@ -734,4 +734,24 @@ app.get('/api/admin/lab-software/export-csv', adminMiddleware, (req, res) => {
   res.send(csv);
 });
 
+// ── ADMIN: GET ALL SIT-IN LOGS FOR RECORDS ──
+app.get('/api/admin/records', adminMiddleware, (req, res) => {
+  const { dateFrom, dateTo } = req.query;
+  let query = 'SELECT * FROM sit_in_logs';
+  const params = [];
+  if (dateFrom && dateTo) {
+    query += ' WHERE date >= ? AND date <= ?';
+    params.push(dateFrom, dateTo);
+  } else if (dateFrom) {
+    query += ' WHERE date >= ?';
+    params.push(dateFrom);
+  } else if (dateTo) {
+    query += ' WHERE date <= ?';
+    params.push(dateTo);
+  }
+  query += ' ORDER BY date DESC, login_time DESC';
+  const logs = db.prepare(query).all(...params);
+  res.json({ success: true, logs });
+});
+
 app.listen(3000, () => console.log('Server running at http://localhost:3000'));

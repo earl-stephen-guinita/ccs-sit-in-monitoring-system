@@ -114,6 +114,7 @@ function showPage(pageKey) {
     if (pageKey === 'reservation') { loadReservationForm(); loadReservations(); }
     if (pageKey === 'adminreservations') loadAdminReservations();
     if (pageKey === 'adminfeedback') loadFeedbackReport();
+    if (pageKey === 'records') loadRecords();
 
     if (pageKey !== 'profile') {
       const editMode = document.getElementById('profileEditMode');
@@ -384,6 +385,8 @@ function showAdminNav() {
   document.getElementById('navAdminLogout').style.display = '';
   document.getElementById('navAdminReservations').style.display = '';
   document.getElementById('navAdminFeedback').style.display = '';
+  const recNav = document.getElementById('navAdminRecords');
+  if (recNav) recNav.style.display = '';
 }
 
 /* ── update nav for logged-in student ── */
@@ -433,6 +436,8 @@ function adminLogout() {
   document.getElementById('navLogin').style.display = '';
   document.getElementById('navAdminReservations').style.display = 'none';  
   document.getElementById('navAdminFeedback').style.display = 'none';
+  const recNav = document.getElementById('navAdminRecords');
+  if (recNav) recNav.style.display = 'none';
   clearSitInForm();
   showPage('home');
 }
@@ -455,6 +460,13 @@ window.addEventListener('DOMContentLoaded', function () {
       })
       .catch(() => localStorage.removeItem('ccs_admin_token'));
   }
+
+  const adminToken2 = localStorage.getItem('ccs_admin_token');
+  if (adminToken2) {
+    const recNav = document.getElementById('navAdminRecords');
+    if (recNav) recNav.style.display = '';
+  }
+  
   if (currentUser && getToken()) {
     updateNavForLoggedIn();
     document.getElementById('heroSection').style.display = 'none';
@@ -1217,6 +1229,8 @@ function setAdminNav(page) {
   document.getElementById('navAdminSitin').classList.toggle('active', page === 'sitin');
   document.getElementById('navAdminReservations').classList.toggle('active', page === 'adminreservations');
   document.getElementById('navAdminFeedback').classList.toggle('active', page === 'adminfeedback');
+  const recNav = document.getElementById('navAdminRecords');
+  if (recNav) recNav.classList.toggle('active', page === 'records');
 }
 
 /* ── set sitin filter ── */
@@ -2760,3 +2774,327 @@ document.addEventListener('DOMContentLoaded', function () {
     if (swNav) swNav.style.display = '';
   }
 });
+
+/* ══════════════════════════════════════════════════════
+   ADMIN RECORDS / GENERATE REPORTS
+══════════════════════════════════════════════════════ */
+
+let recordsData    = [];
+let recordsSortKey = 'date';
+let recordsSortDir = 'desc';
+let recordsPage    = 1;
+
+function loadRecords(dateFrom = '', dateTo = '') {
+  const token = localStorage.getItem('ccs_admin_token');
+  let url = '/api/admin/records';
+  const params = [];
+  if (dateFrom) params.push('dateFrom=' + encodeURIComponent(dateFrom));
+  if (dateTo)   params.push('dateTo='   + encodeURIComponent(dateTo));
+  if (params.length) url += '?' + params.join('&');
+
+  fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(res => res.json())
+    .then(result => {
+      recordsData = result.logs || [];
+      recordsPage = 1;
+      renderRecordsTable();
+
+      const badge   = document.getElementById('recordsCountBadge');
+      const badgeTxt = document.getElementById('recordsCountText');
+      if (recordsData.length > 0) {
+        badge.style.display  = '';
+        badgeTxt.textContent = recordsData.length + ' record' + (recordsData.length !== 1 ? 's' : '') + ' found';
+      } else {
+        badge.style.display = 'none';
+      }
+    })
+    .catch(() => {});
+}
+
+function searchRecords() {
+  const from = document.getElementById('recordsDateFrom').value;
+  const to   = document.getElementById('recordsDateTo').value;
+  loadRecords(from, to);
+}
+
+function resetRecords() {
+  document.getElementById('recordsDateFrom').value = '';
+  document.getElementById('recordsDateTo').value   = '';
+  document.getElementById('recordsSearch').value   = '';
+  document.getElementById('recordsCountBadge').style.display = 'none';
+  recordsData = [];
+  recordsPage = 1;
+  renderRecordsTable();
+}
+
+function sortRecords(key) {
+  if (key === 'duration') {
+    // sort by computed duration ms
+    if (recordsSortKey === 'duration') {
+      recordsSortDir = recordsSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      recordsSortKey = 'duration';
+      recordsSortDir = 'asc';
+    }
+  } else {
+    if (recordsSortKey === key) {
+      recordsSortDir = recordsSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      recordsSortKey = key;
+      recordsSortDir = 'asc';
+    }
+  }
+  recordsPage = 1;
+  renderRecordsTable();
+}
+
+function _getRecordDurationMs(r) {
+  const login  = _parseSQLiteDateTime(r.login_time);
+  const logout = _parseSQLiteDateTime(r.logout_time);
+  if (!login) return 0;
+  if (!logout) return new Date() - login; // active
+  return logout - login;
+}
+
+function renderRecordsTable() {
+  const pageSize = parseInt(document.getElementById('recordsPageSize').value);
+  const search   = document.getElementById('recordsSearch').value.toLowerCase();
+
+  let filtered = recordsData.filter(r => {
+    const name = (r.first_name || '') + ' ' + (r.last_name || '');
+    return (
+      (r.id_number || '').toLowerCase().includes(search) ||
+      name.toLowerCase().includes(search) ||
+      (r.purpose || '').toLowerCase().includes(search) ||
+      (r.lab || '').toLowerCase().includes(search) ||
+      (r.date || '').toLowerCase().includes(search) ||
+      String(r.pc_number || '').includes(search)
+    );
+  });
+
+  // sort
+  filtered.sort((a, b) => {
+    let valA, valB;
+    if (recordsSortKey === 'name') {
+      valA = (a.first_name || '') + ' ' + (a.last_name || '');
+      valB = (b.first_name || '') + ' ' + (b.last_name || '');
+    } else if (recordsSortKey === 'duration') {
+      valA = _getRecordDurationMs(a);
+      valB = _getRecordDurationMs(b);
+      return recordsSortDir === 'asc' ? valA - valB : valB - valA;
+    } else {
+      valA = String(a[recordsSortKey] || '');
+      valB = String(b[recordsSortKey] || '');
+    }
+    if (valA < valB) return recordsSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return recordsSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const total = filtered.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (recordsPage > pages) recordsPage = pages;
+  const start = (recordsPage - 1) * pageSize;
+  const end   = Math.min(start + pageSize, total);
+  const paged = filtered.slice(start, end);
+
+  // update sort icons
+  document.querySelectorAll('#recordsTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#recordsTable th');
+  const keys = ['id_number', 'name', 'purpose', 'lab', 'pc_number', 'date', 'login_time', 'logout_time', 'duration'];
+  keys.forEach((k, i) => {
+    if (k === recordsSortKey && ths[i]) ths[i].querySelector('.sort-btns').classList.add('active');
+  });
+
+  const tbody = document.getElementById('recordsTableBody');
+  if (paged.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4">
+      <i class="bi bi-inbox me-2"></i>${recordsData.length === 0 ? 'Use the date filter above or click Search to load records.' : 'No records match your search.'}
+    </td></tr>`;
+  } else {
+    tbody.innerHTML = paged.map(r => {
+      const durationMs  = _getRecordDurationMs(r);
+      const durationStr = r.logout_time ? _msToHMShort(durationMs) : `<span style="color:#10b981;font-weight:700;">Active</span>`;
+      const loginDt     = _parseSQLiteDateTime(r.login_time);
+      const logoutDt    = _parseSQLiteDateTime(r.logout_time);
+      const timeIn      = loginDt  ? loginDt.toLocaleTimeString([],  { hour: '2-digit', minute: '2-digit' }) : '—';
+      const timeOut     = logoutDt ? logoutDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+
+      return `<tr>
+        <td>${r.id_number}</td>
+        <td>${r.first_name} ${r.last_name}</td>
+        <td>${r.purpose}</td>
+        <td>${r.lab}</td>
+        <td>${r.pc_number ? 'PC ' + r.pc_number : '—'}</td>
+        <td>${r.date || '—'}</td>
+        <td>${timeIn}</td>
+        <td>${timeOut}</td>
+        <td>${durationStr}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('recordsInfo').textContent =
+    total === 0 ? 'Showing 0 to 0 of 0 entries'
+    : `Showing ${start + 1} to ${end} of ${total} entries`;
+
+  renderPagination('recordsPagination', recordsPage, pages, (p) => { recordsPage = p; renderRecordsTable(); });
+}
+
+/* ── export helpers ── */
+function _recordsFilteredAll() {
+  const search = document.getElementById('recordsSearch').value.toLowerCase();
+  return recordsData.filter(r => {
+    const name = (r.first_name || '') + ' ' + (r.last_name || '');
+    return (
+      (r.id_number || '').toLowerCase().includes(search) ||
+      name.toLowerCase().includes(search) ||
+      (r.purpose || '').toLowerCase().includes(search) ||
+      (r.lab || '').toLowerCase().includes(search) ||
+      (r.date || '').toLowerCase().includes(search) ||
+      String(r.pc_number || '').includes(search)
+    );
+  });
+}
+
+function _recordRow(r) {
+  const durationMs  = _getRecordDurationMs(r);
+  const durationStr = r.logout_time ? _msToHMShort(durationMs) : 'Active';
+  const loginDt     = _parseSQLiteDateTime(r.login_time);
+  const logoutDt    = _parseSQLiteDateTime(r.logout_time);
+  const timeIn      = loginDt  ? loginDt.toLocaleTimeString([],  { hour: '2-digit', minute: '2-digit' }) : '—';
+  const timeOut     = logoutDt ? logoutDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+  return {
+    idNumber: r.id_number,
+    name: (r.first_name || '') + ' ' + (r.last_name || ''),
+    purpose: r.purpose,
+    lab: r.lab,
+    pcNo: r.pc_number ? 'PC ' + r.pc_number : '—',
+    date: r.date || '—',
+    login: timeIn,
+    logout: timeOut,
+    duration: durationStr,
+  };
+}
+
+/* CSV */
+function exportRecordsCSV() {
+  const rows = _recordsFilteredAll();
+  if (rows.length === 0) { alert('No records to export.'); return; }
+  const headers = ['ID Number','Name','Purpose','Laboratory','PC No.','Date','Login','Logout','Duration'];
+  const lines   = [headers.join(',')];
+  rows.forEach(r => {
+    const d = _recordRow(r);
+    lines.push([d.idNumber, `"${d.name}"`, `"${d.purpose}"`, d.lab, d.pcNo, d.date, d.login, d.logout, d.duration].join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'sit-in-records.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* Excel (XLSX via simple HTML table trick) */
+function exportRecordsExcel() {
+  const rows = _recordsFilteredAll();
+  if (rows.length === 0) { alert('No records to export.'); return; }
+  const headers = ['ID Number','Name','Purpose','Laboratory','PC No.','Date','Login','Logout','Duration'];
+  let html = '<table><thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+  rows.forEach(r => {
+    const d = _recordRow(r);
+    html += `<tr><td>${d.idNumber}</td><td>${d.name}</td><td>${d.purpose}</td><td>${d.lab}</td>` +
+            `<td>${d.pcNo}</td><td>${d.date}</td><td>${d.login}</td><td>${d.logout}</td><td>${d.duration}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  const blob = new Blob([`<html><head><meta charset="UTF-8"></head><body>${html}</body></html>`],
+    { type: 'application/vnd.ms-excel' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'sit-in-records.xls';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* PDF (print-to-PDF via hidden window) */
+function exportRecordsPDF() {
+  const rows = _recordsFilteredAll();
+  if (rows.length === 0) { alert('No records to export.'); return; }
+  _openRecordsPrintWindow(rows, true);
+}
+
+/* Print */
+function printRecords() {
+  const rows = _recordsFilteredAll();
+  if (rows.length === 0) { alert('No records to print.'); return; }
+  _openRecordsPrintWindow(rows, false);
+}
+
+function _openRecordsPrintWindow(rows, pdf) {
+  const fromVal = document.getElementById('recordsDateFrom').value;
+  const toVal   = document.getElementById('recordsDateTo').value;
+  const range   = fromVal && toVal ? `${fromVal} — ${toVal}` : fromVal || toVal || 'All dates';
+
+  const tableRows = rows.map(r => {
+    const d = _recordRow(r);
+    return `<tr>
+      <td>${d.idNumber}</td><td>${d.name}</td><td>${d.purpose}</td>
+      <td>${d.lab}</td><td>${d.pcNo}</td><td>${d.date}</td>
+      <td>${d.login}</td><td>${d.logout}</td><td>${d.duration}</td>
+    </tr>`;
+  }).join('');
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Sit-In Records — CCS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; padding: 1.5rem 2rem; color: #1a1a2e; font-size: 12px; }
+    .print-header { text-align: center; margin-bottom: 1.2rem; border-bottom: 2px solid #2d0f5e; padding-bottom: 0.8rem; }
+    .print-header h2 { font-size: 1.1rem; color: #2d0f5e; font-weight: 800; }
+    .print-header p  { font-size: 0.78rem; color: #666; margin-top: 0.2rem; }
+    .print-meta { display: flex; justify-content: space-between; margin-bottom: 0.85rem; font-size: 0.75rem; color: #555; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    thead tr { background: #2d0f5e; color: #fff; }
+    th { padding: 0.5rem 0.6rem; text-align: left; font-weight: 700; white-space: nowrap; }
+    td { padding: 0.42rem 0.6rem; border-bottom: 1px solid #e8d8ff; vertical-align: top; }
+    tbody tr:nth-child(even) { background: #f8f4ff; }
+    .print-footer { margin-top: 0.85rem; font-size: 0.72rem; color: #aaa; text-align: right; }
+    @media print { body { padding: 0.5rem 1rem; } }
+  </style>
+</head>
+<body>
+  <div class="print-header">
+    <h2><i>College of Computer Studies — Sit-In Records Report</i></h2>
+    <p>University of Cebu &nbsp;|&nbsp; CCS Sit-In Monitoring System</p>
+  </div>
+  <div class="print-meta">
+    <span><strong>Date Range:</strong> ${range}</span>
+    <span><strong>Generated:</strong> ${new Date().toLocaleString()}</span>
+    <span><strong>Total Records:</strong> ${rows.length}</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID Number</th><th>Name</th><th>Purpose</th>
+        <th>Laboratory</th><th>PC No.</th><th>Date</th>
+        <th>Login</th><th>Logout</th><th>Duration</th>
+      </tr>
+    </thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+  <div class="print-footer">CCS Sit-In Monitoring System &mdash; ${new Date().toLocaleDateString()}</div>
+  <script>
+    window.onload = function() {
+      window.print();
+      ${pdf ? '' : '// window.close();'}
+    };
+  <\/script>
+</body>
+</html>`);
+  win.document.close();
+}
