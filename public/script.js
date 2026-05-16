@@ -711,7 +711,7 @@ function loadDashboard() {
                 ${att.type && att.type.startsWith('image/')
                   ? `<img src="${att.data}" alt="${att.name}" class="ann-att-img" onclick="window.open('${att.data}')" />`
                   : `<a href="${att.data}" download="${att.name}" class="ann-att-file">
-                      <i class="bi bi-file-earmark-pdf me-1"></i>${att.name}
+                      <i class="${_annFileIcon(att.name, att.type)} me-1"></i>${att.name}
                     </a>`
                 }
               </div>` : '';
@@ -762,6 +762,15 @@ function toggleDashCard(bodyId) {
   if (chevron) chevron.classList.toggle('open', !isOpen);
 }
 
+/* ── helper: icon for announcement attachment ── */
+function _annFileIcon(name, type) {
+  if (type && type.startsWith('image/')) return 'bi bi-file-earmark-image';
+  if (type === 'application/pdf' || (name && name.endsWith('.pdf'))) return 'bi bi-file-earmark-pdf';
+  if (name && (name.endsWith('.csv'))) return 'bi bi-filetype-csv';
+  if (name && (name.endsWith('.xlsx') || name.endsWith('.xls'))) return 'bi bi-file-earmark-spreadsheet';
+  return 'bi bi-file-earmark';
+}
+
 /* ── load admin announcements list ── */
 function loadAdminAnnouncements() {
   const token = localStorage.getItem('ccs_admin_token');
@@ -791,11 +800,11 @@ function loadAdminAnnouncements() {
       el.innerHTML = list.map(a => {
         const att = a.attachment ? (() => { try { return JSON.parse(a.attachment); } catch { return null; } })() : null;
         const attHtml = att ? `
-          <div class="ann-att-preview">
+          <div class="ann-att-preview mt-2">
             ${att.type && att.type.startsWith('image/')
               ? `<img src="${att.data}" alt="${att.name}" class="ann-att-img" onclick="window.open('${att.data}')" />`
               : `<a href="${att.data}" download="${att.name}" class="ann-att-file">
-                  <i class="bi bi-file-earmark-pdf me-1"></i>${att.name}
+                  <i class="${_annFileIcon(att.name, att.type)} me-1"></i>${att.name}
                 </a>`
             }
           </div>` : '';

@@ -1433,8 +1433,8 @@
                     <div class="ann-file-drop" id="annFileDrop">
                       <i class="bi bi-cloud-upload fs-4 mb-1" style="color:#7c3aed;"></i>
                       <div class="ann-file-drop-text">Drag & drop or <label for="annFileInput" class="ann-file-browse">browse</label></div>
-                      <div class="ann-file-drop-hint">PNG, JPG, PDF up to 5MB</div>
-                      <input type="file" id="annFileInput" accept="image/*,.pdf" style="display:none;" />
+                      <div class="ann-file-drop-hint">PNG, JPG, PDF, CSV, Excel up to 5MB</div>
+                      <input type="file" id="annFileInput" accept="image/*,.pdf,.csv,.xlsx,.xls" style="display:none;" />
                     </div>
                     <div id="annFilePreview" style="display:none;">
                       <div class="ann-file-preview-inner">
@@ -1599,14 +1599,20 @@
               <h4 class="history-title mb-0"><i class="bi bi-display me-2"></i>Lab Software Management</h4>
               <div class="d-flex gap-2 flex-wrap">
                 <button class="btn-student-action btn-add-student" onclick="exportAdminSoftwareCSV()">
-                  <i class="bi bi-download me-1"></i>Export CSV
+                  <i class="bi bi-filetype-csv me-1"></i>CSV
+                </button>
+                <button class="btn-student-action btn-add-student" onclick="exportAdminSoftwareExcel()">
+                  <i class="bi bi-file-earmark-spreadsheet me-1"></i>Excel
+                </button>
+                <button class="btn-student-action btn-add-student" onclick="exportAdminSoftwarePDF()">
+                  <i class="bi bi-file-earmark-pdf me-1"></i>PDF
                 </button>
                 <label class="btn-student-action btn-reset-sessions"
                       style="cursor:pointer; margin:0;" for="swCsvImport">
-                  <i class="bi bi-upload me-1"></i>Import CSV
+                  <i class="bi bi-upload me-1"></i>Import
                 </label>
-                <input type="file" id="swCsvImport" accept=".csv"
-                      style="display:none;" onchange="importSoftwareCSV(event)" />
+                <input type="file" id="swCsvImport" accept=".csv,.xlsx,.xls"
+                      style="display:none;" onchange="importSoftwareFile(event)" />
               </div>
             </div>
 
@@ -1653,9 +1659,10 @@
 
             <div class="sw-csv-hint">
               <i class="bi bi-info-circle me-1"></i>
-              CSV import format: two columns — <code>Laboratory</code> (e.g. <code>524</code>) and
+              Import supports <strong>CSV</strong> and <strong>Excel (.xlsx/.xls)</strong>. 
+              Format: two columns — <code>Laboratory</code> (e.g. <code>524</code>) and
               <code>Software</code> (e.g. <code>Visual Studio Code</code>), one row per software entry.
-              Import mode replaces all existing data.
+              Import replaces all existing data.
             </div>
           </div>
         </div>
