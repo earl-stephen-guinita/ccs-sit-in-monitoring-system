@@ -317,24 +317,44 @@ document.addEventListener('submit', function (e) {
     const content = document.getElementById('announcementContent').value.trim();
     const token   = localStorage.getItem('ccs_admin_token');
 
-    const url    = id ? '/api/admin/announcements/' + id : '/api/admin/announcements';
-    const method = id ? 'PUT' : 'POST';
+    // read file as base64 if attached
+    const fileInput = document.getElementById('annFileInput');
+    const file      = fileInput && fileInput.files[0];
 
-    fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ title, content }),
-    })
-      .then(res => res.json())
-      .then(result => {
-        if (result.success) {
-          cancelAnnouncementEdit();
-          loadAdminAnnouncements();
-        } else {
-          alert(result.message || 'Failed to save announcement.');
-        }
+    const doSubmit = (attachment) => {
+      const url    = id ? '/api/admin/announcements/' + id : '/api/admin/announcements';
+      const method = id ? 'PUT' : 'POST';
+
+      fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ title, content, attachment }),
       })
-      .catch(() => alert('Could not reach the server.'));
+        .then(res => res.json())
+        .then(result => {
+          if (result.success) {
+            cancelAnnouncementEdit();
+            loadAdminAnnouncements();
+          } else {
+            alert(result.message || 'Failed to save announcement.');
+          }
+        })
+        .catch(() => alert('Could not reach the server.'));
+    };
+
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File is too large. Maximum size is 5MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        doSubmit({ name: file.name, type: file.type, data: ev.target.result });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      doSubmit(null);
+    }
   }
 
   /* sit-in form */
@@ -466,7 +486,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const recNav = document.getElementById('navAdminRecords');
     if (recNav) recNav.style.display = '';
   }
-  
+
   if (currentUser && getToken()) {
     updateNavForLoggedIn();
     document.getElementById('heroSection').style.display = 'none';
@@ -882,6 +902,50 @@ function cancelAnnouncementEdit() {
   document.getElementById('announcementContent').value   = '';
   document.getElementById('announcementSubmitBtn').innerHTML = '<i class="bi bi-plus-lg me-1"></i> Post Announcement';
   document.getElementById('announcementCancelBtn').style.display = 'none';
+  removeAnnFile(); 
+}
+
+/* ── announcement file attachment ── */
+let _annFileData = null;
+
+document.addEventListener('DOMContentLoaded', function () {
+  const drop  = document.getElementById('annFileDrop');
+  const input = document.getElementById('annFileInput');
+  if (!drop || !input) return;
+
+  input.addEventListener('change', () => {
+    if (input.files[0]) _handleAnnFile(input.files[0]);
+  });
+
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    drop.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) _handleAnnFile(file);
+  });
+}, { once: false });
+
+function _handleAnnFile(file) {
+  if (file.size > 5 * 1024 * 1024) { alert('File too large. Max 5MB.'); return; }
+  _annFileData = file;
+  // update the hidden input so the submit handler can read it
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  document.getElementById('annFileInput').files = dt.files;
+  // show preview
+  document.getElementById('annFileDrop').style.display    = 'none';
+  document.getElementById('annFilePreview').style.display = '';
+  document.getElementById('annFileName').textContent      = file.name;
+}
+
+function removeAnnFile() {
+  _annFileData = null;
+  document.getElementById('annFileInput').value           = '';
+  document.getElementById('annFileDrop').style.display    = '';
+  document.getElementById('annFilePreview').style.display = 'none';
+  document.getElementById('annFileName').textContent      = '';
 }
 
 /* ── delete announcement ── */
@@ -2466,64 +2530,6 @@ const LAB_ICONS = {
   '544': 'bi-server',
 };
 
-function loadDashSoftware() {
-  if (!currentUser || !getToken()) return;
-  authFetch('/api/lab-software')
-    .then(res => res.json())
-    .then(result => {
-      if (!result.success) return;
-      renderDashSoftware(result.software);
-    })
-    .catch(() => {});
-}
-
-function renderDashSoftware(software) {
-  const el = document.getElementById('dashSoftwareList');
-  if (!el) return;
-  const labs = ['524', '526', '528', '530', '542', '544'];
-  let html = '';
-  for (const lab of labs) {
-    const entries = software[lab] || [];
-    const icon = LAB_ICONS[lab] || 'bi-pc-display';
-    html += `
-      <div class="dash-sw-lab-block">
-        <div class="dash-sw-lab-header">
-          <i class="bi ${icon} me-2"></i>Laboratory ${lab}
-          <span class="dash-sw-count">${entries.length} app${entries.length !== 1 ? 's' : ''}</span>
-        </div>
-        <div class="dash-sw-tags">
-          ${entries.length === 0
-            ? '<span class="dash-sw-empty">No software listed.</span>'
-            : entries.map(e => `<span class="dash-sw-tag"><i class="bi bi-check-circle-fill me-1"></i>${e.software}</span>`).join('')
-          }
-        </div>
-      </div>
-    `;
-  }
-  el.innerHTML = html;
-}
-
-function exportSoftwareCSV() {
-  const token = getToken();
-  if (!token) return;
-  const a = document.createElement('a');
-  a.href = '/api/lab-software/export-csv';
-  // Pass token via query param workaround for direct download
-  // We fetch and trigger download manually
-  authFetch('/api/lab-software/export-csv')
-    .then(res => res.text())
-    .then(csv => {
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = url;
-      a.download = 'lab-software.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-    })
-    .catch(() => alert('Could not export CSV.'));
-}
-
 /* ══════════════════════════════════════════════════════
    LAB SOFTWARE — ADMIN MANAGEMENT
 ══════════════════════════════════════════════════════ */
@@ -2733,13 +2739,6 @@ const _origShowPage = showPage;
 showPage = function (pageKey) {
   _origShowPage(pageKey);
   if (pageKey === 'software') loadAdminSoftware();
-};
-
-/* ── patch loadDashboard to also load software ── */
-const _origLoadDashboard = loadDashboard;
-loadDashboard = function () {
-  _origLoadDashboard();
-  loadDashSoftware();
 };
 
 /* ── patch showAdminNav to include software nav item ── */

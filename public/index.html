@@ -258,23 +258,7 @@
                 </div>
               </div>
             </div>
-
-            <div class="dash-card" id="dashSoftwareCard">
-              <div class="dash-card-title" onclick="toggleDashCard('dashSoftwareBody')">
-                <span><i class="bi bi-display me-2"></i>Lab Software Availability</span>
-                <i class="bi bi-chevron-down dash-chevron" id="chevron-dashSoftwareBody"></i>
-              </div>
-              <div class="dash-card-body" id="dashSoftwareBody">
-                <div class="dash-software-toolbar">
-                  <button class="btn-sw-export" onclick="exportSoftwareCSV()">
-                    <i class="bi bi-download me-1"></i>Export CSV
-                  </button>
-                </div>
-                <div id="dashSoftwareList">
-                  <p class="dash-empty">Loading software list…</p>
-                </div>
-              </div>
-            </div>            
+           
           </div>
         </div>
       </section>
@@ -1441,6 +1425,26 @@
                   <div class="mb-3">
                     <label class="form-label fw-semibold">Content</label>
                     <textarea class="form-control" id="announcementContent" rows="3" placeholder="Announcement content..." required></textarea>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                      Attachment <span class="text-muted fw-normal small">(optional — image or PDF)</span>
+                    </label>
+                    <div class="ann-file-drop" id="annFileDrop">
+                      <i class="bi bi-cloud-upload fs-4 mb-1" style="color:#7c3aed;"></i>
+                      <div class="ann-file-drop-text">Drag & drop or <label for="annFileInput" class="ann-file-browse">browse</label></div>
+                      <div class="ann-file-drop-hint">PNG, JPG, PDF up to 5MB</div>
+                      <input type="file" id="annFileInput" accept="image/*,.pdf" style="display:none;" />
+                    </div>
+                    <div id="annFilePreview" style="display:none;">
+                      <div class="ann-file-preview-inner">
+                        <i class="bi bi-paperclip me-2" style="color:#7c3aed;"></i>
+                        <span id="annFileName" class="ann-file-name"></span>
+                        <button type="button" class="ann-file-remove" onclick="removeAnnFile()">
+                          <i class="bi bi-x-lg"></i>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <div class="d-flex gap-2 justify-content-end">
                     <button type="button" class="btn btn-cancel-edit" id="announcementCancelBtn" onclick="cancelAnnouncementEdit()" style="display:none;">Cancel</button>
