@@ -365,18 +365,19 @@ document.addEventListener('submit', function (e) {
     const firstName = document.getElementById('sitFirstName').value;
     const purpose   = document.getElementById('sitPurpose').value;
     const lab       = document.getElementById('sitLab').value;
+    const pcNumber  = document.getElementById('sitPcNumber').value.trim() || null;
     const token     = localStorage.getItem('ccs_admin_token');
-
+ 
     if (!purpose || !lab) {
       document.getElementById('sitInError').textContent = 'Please select a purpose and lab.';
       document.getElementById('sitInError').style.display = '';
       return;
     }
-
+ 
     fetch('/api/admin/sit-in', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ idNumber, lastName, firstName, purpose, lab }),
+      body: JSON.stringify({ idNumber, lastName, firstName, purpose, lab, pcNumber }),
     })
       .then(res => res.json())
       .then(result => {
@@ -516,37 +517,72 @@ window.addEventListener('DOMContentLoaded', function () {
 function searchStudent() {
   const idNumber = document.getElementById('searchIdNumber').value.trim();
   const errorEl  = document.getElementById('searchError');
-
+ 
   if (!idNumber) {
     errorEl.textContent = 'Please enter an ID number.';
     errorEl.style.display = '';
     return;
   }
-
+ 
   errorEl.style.display = 'none';
   const token = localStorage.getItem('ccs_admin_token');
-
+ 
   fetch('/api/admin/search-student?idNumber=' + encodeURIComponent(idNumber), {
     headers: { 'Authorization': 'Bearer ' + token },
   })
     .then(res => res.json())
     .then(result => {
       if (result.success) {
-        const s = result.student;
+        const s   = result.student;
+        const res = result.reservation; // may be null
+ 
         if (s.sessions <= 0) {
           errorEl.textContent = 'This student has no remaining sessions and cannot sit in.';
           errorEl.style.display = '';
           document.getElementById('sitInCard').style.display = 'none';
           return;
         }
+ 
         document.getElementById('sitIdNumber').value  = s.idNumber;
         document.getElementById('sitLastName').value  = s.lastName;
         document.getElementById('sitFirstName').value = s.firstName;
         document.getElementById('sitSessions').value  = s.sessions;
         document.getElementById('sitPurpose').value   = '';
         document.getElementById('sitLab').value       = '';
+        document.getElementById('sitPcNumber').value  = '';
         document.getElementById('sitInError').style.display = 'none';
         document.getElementById('sitInCard').style.display  = '';
+ 
+        // ── reservation hint ──
+        const hintEl     = document.getElementById('sitResHint');
+        const hintTextEl = document.getElementById('sitResHintText');
+ 
+        if (res) {
+          // pre-fill from the approved reservation
+          const purposeSelect = document.getElementById('sitPurpose');
+          const labSelect     = document.getElementById('sitLab');
+          const pcInput       = document.getElementById('sitPcNumber');
+ 
+          // set purpose if option exists
+          for (const opt of purposeSelect.options) {
+            if (opt.value === res.purpose) { opt.selected = true; break; }
+          }
+          // set lab if option exists
+          for (const opt of labSelect.options) {
+            if (opt.value === res.lab) { opt.selected = true; break; }
+          }
+          if (res.pc_number) pcInput.value = res.pc_number;
+ 
+          hintTextEl.textContent =
+            `✅ Auto-filled from approved reservation — Lab ${res.lab}, ${res.purpose}` +
+            (res.pc_number ? `, PC ${res.pc_number}` : '') +
+            ` at ${res.time_in}.`;
+          hintEl.style.display = '';
+          hintEl.style.removeProperty('display'); // override the !important none
+          hintEl.style.display = 'flex';
+        } else {
+          hintEl.style.display = 'none';
+        }
       } else {
         errorEl.textContent = result.message || 'Student not found.';
         errorEl.style.display = '';
@@ -566,12 +602,14 @@ document.addEventListener('keydown', function (e) {
 
 /* ── clear sit-in form ── */
 function clearSitInForm() {
-  const s = document.getElementById('searchIdNumber');
-  const c = document.getElementById('sitInCard');
-  const err = document.getElementById('searchError');
-  if (s) s.value = '';
-  if (c) c.style.display = 'none';
-  if (err) err.style.display = 'none';
+  const s    = document.getElementById('searchIdNumber');
+  const c    = document.getElementById('sitInCard');
+  const err  = document.getElementById('searchError');
+  const hint = document.getElementById('sitResHint');
+  if (s)    s.value = '';
+  if (c)    c.style.display = 'none';
+  if (err)  err.style.display = 'none';
+  if (hint) hint.style.display = 'none';
 }
 
 /* ── load profile page ── */

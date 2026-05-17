@@ -1367,6 +1367,13 @@
                 <div class="admin-card-title">
                   <i class="bi bi-clipboard2-check me-2"></i>Sit-In Form
                 </div>
+ 
+                <!-- ── reservation hint (shown when student has an approved reservation today) ── -->
+                <div id="sitResHint" class="alert alert-success py-2 small mb-3 d-flex align-items-center gap-2" style="display:none !important;">
+                  <i class="bi bi-calendar-check-fill"></i>
+                  <span id="sitResHintText">Student has an approved reservation today.</span>
+                </div>
+ 
                 <form id="sitInForm" novalidate>
                   <div class="row g-3 mb-3">
                     <div class="col-md-4">
@@ -1392,14 +1399,14 @@
                     </div>
                   </div>
                   <div class="row g-3 mb-3">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                       <label class="form-label fw-semibold">Remaining Sessions</label>
                       <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-clock-history"></i></span>
                         <input type="number" class="form-control" id="sitSessions" readonly min="0" max="30" style="background:#f0e6ff; cursor:not-allowed;" />
                       </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                       <label class="form-label fw-semibold">Purpose <span class="text-danger">*</span></label>
                       <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-code-slash"></i></span>
@@ -1413,7 +1420,7 @@
                         </select>
                       </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                       <label class="form-label fw-semibold">Lab <span class="text-danger">*</span></label>
                       <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-building"></i></span>
@@ -1426,6 +1433,13 @@
                           <option>542</option>
                           <option>544</option>
                         </select>
+                      </div>
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label fw-semibold">PC No. <span class="text-muted fw-normal small">(optional)</span></label>
+                      <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-display"></i></span>
+                        <input type="number" class="form-control" id="sitPcNumber" min="1" max="50" placeholder="e.g. 12" />
                       </div>
                     </div>
                   </div>
