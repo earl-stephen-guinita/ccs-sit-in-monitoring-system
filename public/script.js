@@ -2939,6 +2939,13 @@ function importSoftwareFile(event) {
   const file = event.target.files[0];
   if (!file) return;
 
+  const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+  if (isExcel) {
+    alert('Excel (.xlsx/.xls) binary import is not supported directly.\nPlease save your spreadsheet as CSV first:\nFile → Save As → CSV (Comma delimited).');
+    event.target.value = '';
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = function (e) {
     const text = e.target.result;
@@ -3012,565 +3019,171 @@ function parseCSVLine(line) {
   return result;
 }
 
-/* ── patch showPage to load software page ── */
-const _origShowPage = showPage;
-showPage = function (pageKey) {
-  _origShowPage(pageKey);
-  if (pageKey === 'software') loadAdminSoftware();
-};
-
-/* ── patch showAdminNav to include software nav item ── */
-const _origShowAdminNav = showAdminNav;
-showAdminNav = function () {
-  _origShowAdminNav();
-  const swNav = document.getElementById('navAdminSoftware');
-  if (swNav) swNav.style.display = '';
-};
-
-/* ── patch adminLogout to hide software nav item ── */
-const _origAdminLogout = adminLogout;
-adminLogout = function () {
-  const swNav = document.getElementById('navAdminSoftware');
-  if (swNav) swNav.style.display = 'none';
-  _origAdminLogout();
-};
-
-/* ── patch setAdminNav to handle 'software' ── */
-const _origSetAdminNav = setAdminNav;
-setAdminNav = function (page) {
-  _origSetAdminNav(page);
-  const swNav = document.getElementById('navAdminSoftware');
-  if (swNav) swNav.classList.toggle('active', page === 'software');
-};
-
-/* ── restore software on DOMContentLoaded if admin token present ── */
-document.addEventListener('DOMContentLoaded', function () {
-  const adminToken = localStorage.getItem('ccs_admin_token');
-  if (adminToken) {
-    const swNav = document.getElementById('navAdminSoftware');
-    if (swNav) swNav.style.display = '';
+function assignTask() {
+  const idNumber    = document.getElementById('lbTaskIdNumber').value.trim();
+  const title       = document.getElementById('lbTaskTitle').value.trim();
+  const description = document.getElementById('lbTaskDesc').value.trim();
+  const points      = parseInt(document.getElementById('lbTaskPoints').value) || 10;
+  const msgEl       = document.getElementById('lbTaskMsg');
+  const token       = localStorage.getItem('ccs_admin_token');
+ 
+  if (!idNumber || !title) {
+    msgEl.style.color   = '#dc3545';
+    msgEl.textContent   = '✗ Please enter an ID number and task title.';
+    return;
   }
-});
-
-/* ══════════════════════════════════════════════════════
-   ADMIN RECORDS / GENERATE REPORTS
-══════════════════════════════════════════════════════ */
-
-let recordsData    = [];
-let recordsSortKey = 'date';
-let recordsSortDir = 'desc';
-let recordsPage    = 1;
-
-function loadRecords(dateFrom = '', dateTo = '') {
-  const token = localStorage.getItem('ccs_admin_token');
-  let url = '/api/admin/records';
-  const params = [];
-  if (dateFrom) params.push('dateFrom=' + encodeURIComponent(dateFrom));
-  if (dateTo)   params.push('dateTo='   + encodeURIComponent(dateTo));
-  if (params.length) url += '?' + params.join('&');
-
-  fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
-    .then(res => res.json())
-    .then(result => {
-      recordsData = result.logs || [];
-      recordsPage = 1;
-      renderRecordsTable();
-
-      const badge   = document.getElementById('recordsCountBadge');
-      const badgeTxt = document.getElementById('recordsCountText');
-      if (recordsData.length > 0) {
-        badge.style.display  = '';
-        badgeTxt.textContent = recordsData.length + ' record' + (recordsData.length !== 1 ? 's' : '') + ' found';
-      } else {
-        badge.style.display = 'none';
-      }
-    })
-    .catch(() => {});
-}
-
-function searchRecords() {
-  const from = document.getElementById('recordsDateFrom').value;
-  const to   = document.getElementById('recordsDateTo').value;
-  loadRecords(from, to);
-}
-
-function resetRecords() {
-  document.getElementById('recordsDateFrom').value = '';
-  document.getElementById('recordsDateTo').value   = '';
-  document.getElementById('recordsSearch').value   = '';
-  document.getElementById('recordsCountBadge').style.display = 'none';
-  recordsData = [];
-  recordsPage = 1;
-  renderRecordsTable();
-}
-
-function sortRecords(key) {
-  if (key === 'duration') {
-    // sort by computed duration ms
-    if (recordsSortKey === 'duration') {
-      recordsSortDir = recordsSortDir === 'asc' ? 'desc' : 'asc';
-    } else {
-      recordsSortKey = 'duration';
-      recordsSortDir = 'asc';
-    }
-  } else {
-    if (recordsSortKey === key) {
-      recordsSortDir = recordsSortDir === 'asc' ? 'desc' : 'asc';
-    } else {
-      recordsSortKey = key;
-      recordsSortDir = 'asc';
-    }
-  }
-  recordsPage = 1;
-  renderRecordsTable();
-}
-
-function _getRecordDurationMs(r) {
-  const login  = _parseSQLiteDateTime(r.login_time);
-  const logout = _parseSQLiteDateTime(r.logout_time);
-  if (!login) return 0;
-  if (!logout) return new Date() - login; // active
-  return logout - login;
-}
-
-function renderRecordsTable() {
-  const pageSize = parseInt(document.getElementById('recordsPageSize').value);
-  const search   = document.getElementById('recordsSearch').value.toLowerCase();
-
-  let filtered = recordsData.filter(r => {
-    const name = (r.first_name || '') + ' ' + (r.last_name || '');
-    return (
-      (r.id_number || '').toLowerCase().includes(search) ||
-      name.toLowerCase().includes(search) ||
-      (r.purpose || '').toLowerCase().includes(search) ||
-      (r.lab || '').toLowerCase().includes(search) ||
-      (r.date || '').toLowerCase().includes(search) ||
-      String(r.pc_number || '').includes(search)
-    );
-  });
-
-  // sort
-  filtered.sort((a, b) => {
-    let valA, valB;
-    if (recordsSortKey === 'name') {
-      valA = (a.first_name || '') + ' ' + (a.last_name || '');
-      valB = (b.first_name || '') + ' ' + (b.last_name || '');
-    } else if (recordsSortKey === 'duration') {
-      valA = _getRecordDurationMs(a);
-      valB = _getRecordDurationMs(b);
-      return recordsSortDir === 'asc' ? valA - valB : valB - valA;
-    } else {
-      valA = String(a[recordsSortKey] || '');
-      valB = String(b[recordsSortKey] || '');
-    }
-    if (valA < valB) return recordsSortDir === 'asc' ? -1 : 1;
-    if (valA > valB) return recordsSortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const total = filtered.length;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  if (recordsPage > pages) recordsPage = pages;
-  const start = (recordsPage - 1) * pageSize;
-  const end   = Math.min(start + pageSize, total);
-  const paged = filtered.slice(start, end);
-
-  // update sort icons
-  document.querySelectorAll('#recordsTable .sort-btns').forEach(el => el.classList.remove('active'));
-  const ths  = document.querySelectorAll('#recordsTable th');
-  const keys = ['id_number', 'name', 'purpose', 'lab', 'pc_number', 'date', 'login_time', 'logout_time', 'duration'];
-  keys.forEach((k, i) => {
-    if (k === recordsSortKey && ths[i]) ths[i].querySelector('.sort-btns').classList.add('active');
-  });
-
-  const tbody = document.getElementById('recordsTableBody');
-  if (paged.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4">
-      <i class="bi bi-inbox me-2"></i>${recordsData.length === 0 ? 'Use the date filter above or click Search to load records.' : 'No records match your search.'}
-    </td></tr>`;
-  } else {
-    tbody.innerHTML = paged.map(r => {
-      const durationMs  = _getRecordDurationMs(r);
-      const durationStr = r.logout_time ? _msToHMShort(durationMs) : `<span style="color:#10b981;font-weight:700;">Active</span>`;
-      const loginDt     = _parseSQLiteDateTime(r.login_time);
-      const logoutDt    = _parseSQLiteDateTime(r.logout_time);
-      const timeIn      = loginDt  ? loginDt.toLocaleTimeString([],  { hour: '2-digit', minute: '2-digit' }) : '—';
-      const timeOut     = logoutDt ? logoutDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
-
-      return `<tr>
-        <td>${r.id_number}</td>
-        <td>${r.first_name} ${r.last_name}</td>
-        <td>${r.purpose}</td>
-        <td>${r.lab}</td>
-        <td>${r.pc_number ? 'PC ' + r.pc_number : '—'}</td>
-        <td>${r.date || '—'}</td>
-        <td>${timeIn}</td>
-        <td>${timeOut}</td>
-        <td>${durationStr}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  document.getElementById('recordsInfo').textContent =
-    total === 0 ? 'Showing 0 to 0 of 0 entries'
-    : `Showing ${start + 1} to ${end} of ${total} entries`;
-
-  renderPagination('recordsPagination', recordsPage, pages, (p) => { recordsPage = p; renderRecordsTable(); });
-}
-
-/* ── export helpers ── */
-function _recordsFilteredAll() {
-  const search = document.getElementById('recordsSearch').value.toLowerCase();
-  return recordsData.filter(r => {
-    const name = (r.first_name || '') + ' ' + (r.last_name || '');
-    return (
-      (r.id_number || '').toLowerCase().includes(search) ||
-      name.toLowerCase().includes(search) ||
-      (r.purpose || '').toLowerCase().includes(search) ||
-      (r.lab || '').toLowerCase().includes(search) ||
-      (r.date || '').toLowerCase().includes(search) ||
-      String(r.pc_number || '').includes(search)
-    );
-  });
-}
-
-function _recordRow(r) {
-  const durationMs  = _getRecordDurationMs(r);
-  const durationStr = r.logout_time ? _msToHMShort(durationMs) : 'Active';
-  const loginDt     = _parseSQLiteDateTime(r.login_time);
-  const logoutDt    = _parseSQLiteDateTime(r.logout_time);
-  const timeIn      = loginDt  ? loginDt.toLocaleTimeString([],  { hour: '2-digit', minute: '2-digit' }) : '—';
-  const timeOut     = logoutDt ? logoutDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
-  return {
-    idNumber: r.id_number,
-    name: (r.first_name || '') + ' ' + (r.last_name || ''),
-    purpose: r.purpose,
-    lab: r.lab,
-    pcNo: r.pc_number ? 'PC ' + r.pc_number : '—',
-    date: r.date || '—',
-    login: timeIn,
-    logout: timeOut,
-    duration: durationStr,
-  };
-}
-
-/* CSV */
-function exportRecordsCSV() {
-  const rows = _recordsFilteredAll();
-  if (rows.length === 0) { alert('No records to export.'); return; }
-  const headers = ['ID Number','Name','Purpose','Laboratory','PC No.','Date','Login','Logout','Duration'];
-  const lines   = [headers.join(',')];
-  rows.forEach(r => {
-    const d = _recordRow(r);
-    lines.push([d.idNumber, `"${d.name}"`, `"${d.purpose}"`, d.lab, d.pcNo, d.date, d.login, d.logout, d.duration].join(','));
-  });
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = 'sit-in-records.csv';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/* Excel (XLSX via simple HTML table trick) */
-function exportRecordsExcel() {
-  const rows = _recordsFilteredAll();
-  if (rows.length === 0) { alert('No records to export.'); return; }
-  const headers = ['ID Number','Name','Purpose','Laboratory','PC No.','Date','Login','Logout','Duration'];
-  let html = '<table><thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
-  rows.forEach(r => {
-    const d = _recordRow(r);
-    html += `<tr><td>${d.idNumber}</td><td>${d.name}</td><td>${d.purpose}</td><td>${d.lab}</td>` +
-            `<td>${d.pcNo}</td><td>${d.date}</td><td>${d.login}</td><td>${d.logout}</td><td>${d.duration}</td></tr>`;
-  });
-  html += '</tbody></table>';
-  const blob = new Blob([`<html><head><meta charset="UTF-8"></head><body>${html}</body></html>`],
-    { type: 'application/vnd.ms-excel' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = 'sit-in-records.xls';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/* PDF (print-to-PDF via hidden window) */
-function exportRecordsPDF() {
-  const rows = _recordsFilteredAll();
-  if (rows.length === 0) { alert('No records to export.'); return; }
-  _openRecordsPrintWindow(rows, true);
-}
-
-/* Print */
-function printRecords() {
-  const rows = _recordsFilteredAll();
-  if (rows.length === 0) { alert('No records to print.'); return; }
-  _openRecordsPrintWindow(rows, false);
-}
-
-function _openRecordsPrintWindow(rows, pdf) {
-  const fromVal = document.getElementById('recordsDateFrom').value;
-  const toVal   = document.getElementById('recordsDateTo').value;
-  const range   = fromVal && toVal ? `${fromVal} — ${toVal}` : fromVal || toVal || 'All dates';
-
-  const tableRows = rows.map(r => {
-    const d = _recordRow(r);
-    return `<tr>
-      <td>${d.idNumber}</td><td>${d.name}</td><td>${d.purpose}</td>
-      <td>${d.lab}</td><td>${d.pcNo}</td><td>${d.date}</td>
-      <td>${d.login}</td><td>${d.logout}</td><td>${d.duration}</td>
-    </tr>`;
-  }).join('');
-
-  const win = window.open('', '_blank');
-  win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <title>Sit-In Records — CCS</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', sans-serif; padding: 1.5rem 2rem; color: #1a1a2e; font-size: 12px; }
-    .print-header { text-align: center; margin-bottom: 1.2rem; border-bottom: 2px solid #2d0f5e; padding-bottom: 0.8rem; }
-    .print-header h2 { font-size: 1.1rem; color: #2d0f5e; font-weight: 800; }
-    .print-header p  { font-size: 0.78rem; color: #666; margin-top: 0.2rem; }
-    .print-meta { display: flex; justify-content: space-between; margin-bottom: 0.85rem; font-size: 0.75rem; color: #555; }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    thead tr { background: #2d0f5e; color: #fff; }
-    th { padding: 0.5rem 0.6rem; text-align: left; font-weight: 700; white-space: nowrap; }
-    td { padding: 0.42rem 0.6rem; border-bottom: 1px solid #e8d8ff; vertical-align: top; }
-    tbody tr:nth-child(even) { background: #f8f4ff; }
-    .print-footer { margin-top: 0.85rem; font-size: 0.72rem; color: #aaa; text-align: right; }
-    @media print { body { padding: 0.5rem 1rem; } }
-  </style>
-</head>
-<body>
-  <div class="print-header">
-    <h2><i>College of Computer Studies — Sit-In Records Report</i></h2>
-    <p>University of Cebu &nbsp;|&nbsp; CCS Sit-In Monitoring System</p>
-  </div>
-  <div class="print-meta">
-    <span><strong>Date Range:</strong> ${range}</span>
-    <span><strong>Generated:</strong> ${new Date().toLocaleString()}</span>
-    <span><strong>Total Records:</strong> ${rows.length}</span>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>ID Number</th><th>Name</th><th>Purpose</th>
-        <th>Laboratory</th><th>PC No.</th><th>Date</th>
-        <th>Login</th><th>Logout</th><th>Duration</th>
-      </tr>
-    </thead>
-    <tbody>${tableRows}</tbody>
-  </table>
-  <div class="print-footer">CCS Sit-In Monitoring System &mdash; ${new Date().toLocaleDateString()}</div>
-  <script>
-    window.onload = function() {
-      window.print();
-      ${pdf ? '' : '// window.close();'}
-    };
-  <\/script>
-</body>
-</html>`);
-  win.document.close();
-}
-
-/* ══════════════════════════════════════════════════════
-   SIT-IN PAGE — TWO TABS
-   ══════════════════════════════════════════════════════ */
-
-/* ── tab switcher ── */
-function switchSitinTab(tab) {
-  const isRecords = tab === 'records';
-  document.getElementById('sitinTabRecords').style.display = isRecords ? '' : 'none';
-  document.getElementById('sitinTabActive').style.display  = isRecords ? 'none' : '';
-  document.getElementById('tabBtnSitinRecords').classList.toggle('active', isRecords);
-  document.getElementById('tabBtnSitinActive').classList.toggle('active', !isRecords);
-  if (!isRecords) loadActiveSitin();
-  else renderSitinAnalytics(sitinData); // refresh analytics when returning to records tab
-}
-
-/* ── active students state ── */
-let activeSitinData    = [];
-let activeSitinSortKey = 'login_time';
-let activeSitinSortDir = 'desc';
-let activeSitinPage    = 1;
-let _activeDurationTimer = null;
-
-function _stopActiveDuration() {
-  if (_activeDurationTimer) { clearInterval(_activeDurationTimer); _activeDurationTimer = null; }
-}
-
-/* ── load active sit-ins (only rows with no logout_time) ── */
-function loadActiveSitin() {
-  const token = localStorage.getItem('ccs_admin_token');
-  fetch('/api/admin/sitin', { headers: { 'Authorization': 'Bearer ' + token } })
-    .then(res => res.json())
-    .then(result => {
-      // filter to active only
-      activeSitinData = (result.logs || []).filter(r => !r.logout_time);
-      activeSitinPage = 1;
-      _updateActiveBadge(activeSitinData.length);
-      renderActiveSitinTable();
-    })
-    .catch(() => {});
-}
-
-function _updateActiveBadge(count) {
-  const badge = document.getElementById('sitinActiveBadge');
-  if (!badge) return;
-  if (count > 0) { badge.textContent = count; badge.style.display = 'inline-flex'; }
-  else           { badge.style.display = 'none'; }
-}
-
-/* refresh badge without switching tabs */
-function _refreshActiveBadge() {
-  const token = localStorage.getItem('ccs_admin_token');
-  fetch('/api/admin/sitin', { headers: { 'Authorization': 'Bearer ' + token } })
-    .then(res => res.json())
-    .then(result => _updateActiveBadge((result.logs || []).filter(r => !r.logout_time).length))
-    .catch(() => {});
-}
-
-function sortActiveSitin(key) {
-  if (activeSitinSortKey === key) activeSitinSortDir = activeSitinSortDir === 'asc' ? 'desc' : 'asc';
-  else { activeSitinSortKey = key; activeSitinSortDir = 'asc'; }
-  activeSitinPage = 1;
-  renderActiveSitinTable();
-}
-
-function renderActiveSitinTable() {
-  _stopActiveDuration();
-  const pageSize = parseInt(document.getElementById('activeSitinPageSize').value);
-  const search   = (document.getElementById('activeSitinSearch').value || '').toLowerCase();
-
-  let filtered = activeSitinData.filter(r => {
-    const name = r.first_name + ' ' + r.last_name;
-    return (
-      String(r.id).includes(search) ||
-      r.id_number.toLowerCase().includes(search) ||
-      name.toLowerCase().includes(search) ||
-      r.purpose.toLowerCase().includes(search) ||
-      r.lab.toLowerCase().includes(search) ||
-      String(r.pc_number || '').includes(search)
-    );
-  });
-
-  filtered.sort((a, b) => {
-    let valA, valB;
-    if (activeSitinSortKey === 'name') {
-      valA = a.first_name + ' ' + a.last_name;
-      valB = b.first_name + ' ' + b.last_name;
-    } else {
-      valA = String(a[activeSitinSortKey] ?? '');
-      valB = String(b[activeSitinSortKey] ?? '');
-    }
-    if (valA < valB) return activeSitinSortDir === 'asc' ? -1 : 1;
-    if (valA > valB) return activeSitinSortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const total = filtered.length;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  if (activeSitinPage > pages) activeSitinPage = pages;
-  const start = (activeSitinPage - 1) * pageSize;
-  const end   = Math.min(start + pageSize, total);
-  const paged = filtered.slice(start, end);
-
-  /* update sort icons */
-  document.querySelectorAll('#activeSitinTable .sort-btns').forEach(el => el.classList.remove('active'));
-  const ths  = document.querySelectorAll('#activeSitinTable th');
-  const keys = ['id','id_number','name','purpose','lab','pc_number','sessions_at_sitin','login_time','duration'];
-  keys.forEach((k, i) => {
-    if (k === activeSitinSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active');
-  });
-
-  const now   = new Date();
-  const tbody = document.getElementById('activeSitinTableBody');
-
-  if (paged.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">No active sit-in sessions.</td></tr>';
-  } else {
-    tbody.innerHTML = paged.map(r => {
-      const loginDt   = _parseSQLiteDateTime(r.login_time);
-      const ms        = loginDt ? now - loginDt : 0;
-      const timeInFmt = loginDt
-        ? loginDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '—';
-      return `<tr>
-        <td>${r.id}</td>
-        <td>${r.id_number}</td>
-        <td>${r.first_name} ${r.last_name}</td>
-        <td>${r.purpose}</td>
-        <td>${r.lab}</td>
-        <td>${r.pc_number ? 'PC ' + r.pc_number : '—'}</td>
-        <td>${r.sessions_at_sitin !== null && r.sessions_at_sitin !== undefined ? r.sessions_at_sitin : '—'}</td>
-        <td>${timeInFmt}</td>
-        <td><span class="active-duration" data-login="${r.login_time}">${_msToHMS(ms)}</span></td>
-        <td>
-          <button class="btn-logout-sitin" onclick="adminLogoutSitinFromActive(${r.id})">
-            <i class="bi bi-box-arrow-right me-1"></i>Logout
-          </button>
-        </td>
-      </tr>`;
-    }).join('');
-  }
-
-  document.getElementById('activeSitinInfo').textContent =
-    total === 0 ? 'Showing 0 to 0 of 0 entries'
-    : `Showing ${start + 1} to ${end} of ${total} entries`;
-
-  renderPagination('activeSitinPagination', activeSitinPage, pages, (p) => {
-    activeSitinPage = p; renderActiveSitinTable();
-  });
-
-  /* live duration ticker */
-  if (paged.length > 0) {
-    _activeDurationTimer = setInterval(() => {
-      const nowTick = new Date();
-      document.querySelectorAll('.active-duration[data-login]').forEach(el => {
-        const d = _parseSQLiteDateTime(el.dataset.login);
-        if (d) el.textContent = _msToHMS(nowTick - d);
-      });
-    }, 1000);
-  }
-}
-
-/* logout from active tab — reloads both tables */
-function adminLogoutSitinFromActive(id) {
-  if (!confirm('Log out this student? This will deduct 1 session.')) return;
-  const token = localStorage.getItem('ccs_admin_token');
-  fetch('/api/admin/sitin-logout/' + id, {
+ 
+  fetch('/api/admin/tasks', {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + token }
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ idNumber, title, description, points }),
   })
     .then(res => res.json())
     .then(result => {
       if (result.success) {
-        loadActiveSitin();   // refresh active tab
-        loadSitin();         // keep records tab in sync
+        msgEl.style.color = '#198754';
+        msgEl.textContent = `✓ Task assigned to ${idNumber}!`;
+        document.getElementById('lbTaskIdNumber').value = '';
+        document.getElementById('lbTaskTitle').value    = '';
+        document.getElementById('lbTaskDesc').value     = '';
+        document.getElementById('lbTaskPoints').value   = '10';
+        loadAdminTasks();
       } else {
-        alert(result.message || 'Failed to logout student.');
+        msgEl.style.color = '#dc3545';
+        msgEl.textContent = '✗ ' + (result.message || 'Failed.');
       }
+    })
+    .catch(() => {
+      msgEl.style.color = '#dc3545';
+      msgEl.textContent = '✗ Server error.';
+    });
+}
+ 
+function markTaskComplete(id) {
+  if (!confirm('Mark this task as complete? The student will be notified.')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/tasks/' + id + '/complete', {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) loadAdminTasks();
+      else alert(result.message || 'Failed to complete task.');
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+ 
+function deleteTask(id) {
+  if (!confirm('Delete this task? This cannot be undone.')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/tasks/' + id, {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) loadAdminTasks();
+      else alert(result.message || 'Failed to delete task.');
     })
     .catch(() => alert('Could not reach the server.'));
 }
 
-/* ── patch showPage: on entering sitin page, reset to tab 1 and refresh badge ── */
-const _origShowPageSitinTab = showPage;
-showPage = function (pageKey) {
+function loadAdminTasks() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/tasks', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(res => res.json())
+    .then(result => renderAdminTasks(result.tasks || []))
+    .catch(() => {});
+}
+ 
+// to add Excel format detection before the text reader runs.
+const _origImportSoftwareFile = typeof importSoftwareFile === 'function' ? importSoftwareFile : null;
+ 
+importSoftwareFile = function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+ 
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+    alert(
+      'Excel binary format (.xlsx/.xls) cannot be imported directly.\n\n' +
+      'Please save your spreadsheet as CSV first:\n' +
+      '  In Excel: File → Save As → CSV (Comma delimited)\n' +
+      '  In Google Sheets: File → Download → CSV\n\n' +
+      'Then import the .csv file.'
+    );
+    event.target.value = '';
+    return;
+  }
+ 
+  // Delegate to original CSV handler
+  if (_origImportSoftwareFile) _origImportSoftwareFile(event);
+};
+
+const __origShowPage = showPage;
+showPage = function(pageKey) {
+  // BUG FIX: stop active duration timer for any non-sitin page
   if (pageKey !== 'sitin') _stopActiveDuration();
-  _origShowPageSitinTab(pageKey);
+ 
+  // call the original showPage (which handles profile, admin, history, etc.)
+  __origShowPage(pageKey);
+ 
+  // ── additional per-page actions (consolidated from 3 separate patches) ──
+  if (pageKey === 'software') {
+    loadAdminSoftware();
+  }
+  if (pageKey === 'leaderboard') {
+    loadLeaderboard();
+  }
+  if (pageKey === 'adminleaderboard') {
+    switchLbAdminTab('points');
+    loadAdminPointsHistory();
+    loadAdminTasks();
+  }
   if (pageKey === 'sitin') {
-    switchSitinTab('records');   // always open on records tab
-    _refreshActiveBadge();       // update the badge count
+    switchSitinTab('records');
+    _refreshActiveBadge();
   }
 };
 
-/* ── also refresh badge after an admin logout from the records tab ── */
-const _origAdminLogoutSitin = adminLogoutSitin;
-adminLogoutSitin = function (id) {
+const __origShowAdminNav = showAdminNav;
+showAdminNav = function() {
+  __origShowAdminNav();
+  const swNav = document.getElementById('navAdminSoftware');
+  if (swNav) swNav.style.display = '';
+  const lbNav = document.getElementById('navAdminLeaderboard');
+  if (lbNav) lbNav.style.display = '';
+};
+
+const __origAdminLogout = adminLogout;
+adminLogout = function() {
+  // hide all admin-specific nav extras
+  const swNav = document.getElementById('navAdminSoftware');
+  if (swNav) swNav.style.display = 'none';
+  const lbAdminNav = document.getElementById('navAdminLeaderboard');
+  if (lbAdminNav) lbAdminNav.style.display = 'none';
+  // BUG FIX 4: also reset the public leaderboard nav to default state
+  const lbNav = document.getElementById('navLeaderboard');
+  if (lbNav) lbNav.style.display = '';
+  // call the original adminLogout (handles token removal, nav cleanup, page switch)
+  __origAdminLogout();
+};
+
+const __origSetAdminNav = setAdminNav;
+setAdminNav = function(page) {
+  __origSetAdminNav(page);
+  const swNav = document.getElementById('navAdminSoftware');
+  if (swNav) swNav.classList.toggle('active', page === 'software');
+  const lbNav = document.getElementById('navAdminLeaderboard');
+  if (lbNav) lbNav.classList.toggle('active', page === 'adminleaderboard');
+};
+
+const __origAdminLogoutSitin = adminLogoutSitin;
+adminLogoutSitin = function(id) {
+  // Delegate entirely to original — which already has confirm + fetch + loadSitin.
+  // ensure _refreshActiveBadge is called after it resolves.
+  // Since the original is async (fetch inside), wrap the fetch here.
   if (!confirm('Log out this student? This will deduct 1 session.')) return;
   const token = localStorage.getItem('ccs_admin_token');
   fetch('/api/admin/sitin-logout/' + id, {
@@ -3581,7 +3194,7 @@ adminLogoutSitin = function (id) {
     .then(result => {
       if (result.success) {
         loadSitin();
-        _refreshActiveBadge();
+        _refreshActiveBadge(); // ← was the original intent of the duplicate override
       } else {
         alert(result.message || 'Failed to logout student.');
       }
@@ -3589,579 +3202,66 @@ adminLogoutSitin = function (id) {
     .catch(() => alert('Could not reach the server.'));
 };
 
-/* ══════════════════════════════════════════════════════
-   RESERVATION TOGGLE — ADMIN
-   ══════════════════════════════════════════════════════ */
+const __origUpdateNavForLoggedIn = updateNavForLoggedIn;
+updateNavForLoggedIn = function() {
+  __origUpdateNavForLoggedIn();
+  const bellItem = document.getElementById('navNotificationItem');
+  if (bellItem) bellItem.style.display = '';
+  startNotifPolling();
+};
 
-/* ── load current toggle state from server ── */
-function loadReservationToggle() {
-  const token = localStorage.getItem('ccs_admin_token');
-  fetch('/api/admin/settings', {
-    headers: { 'Authorization': 'Bearer ' + token }
-  })
-    .then(res => res.json())
-    .then(result => {
-      if (!result.success) return;
-      _applyReservationToggleUI(result.reservationsEnabled);
-    })
-    .catch(() => {});
-}
+const __origLogoutUser = logoutUser;
+logoutUser = function() {
+  stopNotifPolling();
+  const bellItem = document.getElementById('navNotificationItem');
+  if (bellItem) bellItem.style.display = 'none';
+  updateNotifBadge(0);
+  if (notifPanelOpen) toggleNotifPanel();
+  __origLogoutUser();
+};
 
-/* ── apply UI state for the toggle ── */
-function _applyReservationToggleUI(enabled) {
-  const input   = document.getElementById('resToggleInput');
-  const label   = document.getElementById('resToggleLabel');
-  const wrap    = document.getElementById('resToggleWrap');
-  if (!input || !label || !wrap) return;
-
-  input.checked = enabled;
-
-  if (enabled) {
-    label.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>Reservations: <strong>Enabled</strong>';
-    label.className = 'res-toggle-label enabled';
-    wrap.classList.remove('disabled');
-  } else {
-    label.innerHTML = '<i class="bi bi-slash-circle-fill me-1"></i>Reservations: <strong>Disabled</strong>';
-    label.className = 'res-toggle-label disabled';
-    wrap.classList.add('disabled');
-  }
-}
-
-/* ── toggle handler — called on checkbox change ── */
-function toggleReservations(enabled) {
-  const token = localStorage.getItem('ccs_admin_token');
-
-  const confirmMsg = enabled
-    ? 'Enable student reservations? Students will be able to reserve PCs again.'
-    : 'Disable student reservations? Students will not be able to make new reservations. All students will be notified.';
-
-  if (!confirm(confirmMsg)) {
-    // revert checkbox
-    const input = document.getElementById('resToggleInput');
-    if (input) input.checked = !enabled;
-    return;
-  }
-
-  fetch('/api/admin/settings', {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + token
-    },
-    body: JSON.stringify({ reservationsEnabled: enabled })
-  })
-    .then(res => res.json())
-    .then(result => {
-      if (result.success) {
-        _applyReservationToggleUI(result.reservationsEnabled);
-      } else {
-        alert(result.message || 'Failed to update setting.');
-        // revert
-        const input = document.getElementById('resToggleInput');
-        if (input) input.checked = !enabled;
-      }
-    })
-    .catch(() => {
-      alert('Could not reach the server.');
-      const input = document.getElementById('resToggleInput');
-      if (input) input.checked = !enabled;
-    });
-}
-
-/* ── patch loadAdminReservations to also load toggle state ── */
-const _origLoadAdminReservations = loadAdminReservations;
-loadAdminReservations = function () {
-  _origLoadAdminReservations();
+const __origLoadAdminReservations = loadAdminReservations;
+loadAdminReservations = function() {
+  __origLoadAdminReservations();
   loadReservationToggle();
 };
 
-/* ══════════════════════════════════════════════════════
-   RESERVATION PAGE — STUDENT SIDE
-   Check toggle before showing the form; patch
-   loadReservationForm and submitReservation.
-   ══════════════════════════════════════════════════════ */
-
-const _origLoadReservationForm = loadReservationForm;
-loadReservationForm = function () {
-  _origLoadReservationForm();
+const __origLoadReservationForm = loadReservationForm;
+loadReservationForm = function() {
+  __origLoadReservationForm();
   _checkReservationsEnabled();
 };
 
-function _checkReservationsEnabled() {
-  if (!currentUser || !getToken()) return;
-
-  authFetch('/api/settings')
-    .then(res => res.json())
-    .then(result => {
-      const banner  = document.getElementById('resDisabledBanner');
-      const formBody = document.querySelector('.reservation-form-body');
-      if (!result.reservationsEnabled) {
-        if (banner) banner.style.display = '';
-        if (formBody) formBody.style.opacity = '0.45';
-        if (formBody) formBody.style.pointerEvents = 'none';
-      } else {
-        if (banner) banner.style.display = 'none';
-        if (formBody) { formBody.style.opacity = ''; formBody.style.pointerEvents = ''; }
+const __origRenderHistoryTable = renderHistoryTable;
+renderHistoryTable = function() {
+  // Call original to do all the work
+  __origRenderHistoryTable();
+  // Re-apply sort icons safely (original may have crashed on null querySelector)
+  // This runs after and corrects the active state
+  try {
+    document.querySelectorAll('#historyTable .sort-btns').forEach(el => el.classList.remove('active'));
+    const ths  = document.querySelectorAll('#historyTable th');
+    const keys = ['id_number', 'name', 'purpose', 'lab', 'pc_number', 'login_time', 'logout_time', 'date'];
+    keys.forEach((k, i) => {
+      if (k === historySortKey && ths[i]) {
+        // BUG FIX 3: use ?. to avoid crash when th has no .sort-btns (Action column)
+        ths[i].querySelector('.sort-btns')?.classList.add('active');
       }
-    })
-    .catch(() => {});
-}
-
-/* =====================================================
-   LEADERBOARD SYSTEM
-   ===================================================== */
-
-/* ── patch showPage to support leaderboard pages ── */
-const _origShowPageLb = showPage;
-showPage = function (pageKey) {
-  _origShowPageLb(pageKey);
-  if (pageKey === 'leaderboard')      loadLeaderboard();
-  if (pageKey === 'adminleaderboard') {
-    switchLbAdminTab('points');
-    loadAdminPointsHistory();
-    loadAdminTasks();
-  }
+    });
+  } catch (e) { /* ignore */ }
 };
 
-/* ── patch showAdminNav to include leaderboard ── */
-const _origShowAdminNavLb = showAdminNav;
-showAdminNav = function () {
-  _origShowAdminNavLb();
-  const lbNav = document.getElementById('navAdminLeaderboard');
-  if (lbNav) lbNav.style.display = '';
-};
-
-/* ── patch adminLogout to hide leaderboard nav ── */
-const _origAdminLogoutLb = adminLogout;
-adminLogout = function () {
-  const lbNav = document.getElementById('navAdminLeaderboard');
-  if (lbNav) lbNav.style.display = 'none';
-  _origAdminLogoutLb();
-};
-
-/* ── patch setAdminNav ── */
-const _origSetAdminNavLb = setAdminNav;
-setAdminNav = function (page) {
-  _origSetAdminNavLb(page);
-  const lbNav = document.getElementById('navAdminLeaderboard');
-  if (lbNav) lbNav.classList.toggle('active', page === 'adminleaderboard');
-};
-
-/* ── restore admin leaderboard nav on page load ── */
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', function() {
   const adminToken = localStorage.getItem('ccs_admin_token');
   if (adminToken) {
+    const swNav = document.getElementById('navAdminSoftware');
+    if (swNav) swNav.style.display = '';
     const lbNav = document.getElementById('navAdminLeaderboard');
     if (lbNav) lbNav.style.display = '';
   }
+  if (currentUser && getToken()) {
+    const bellItem = document.getElementById('navNotificationItem');
+    if (bellItem) bellItem.style.display = '';
+    startNotifPolling();
+  }
 });
-
-/* ══════════════════════════════════════════════════════
-   PUBLIC LEADERBOARD
-══════════════════════════════════════════════════════ */
-
-function loadLeaderboard() {
-  fetch('/api/leaderboard')
-    .then(res => res.json())
-    .then(result => {
-      if (!result.success) return;
-      renderLeaderboard(result.leaderboard);
-      const el = document.getElementById('lbUpdatedAt');
-      if (el) el.textContent = 'Updated: ' + new Date().toLocaleTimeString();
-    })
-    .catch(() => {});
-}
-
-/* ── leaderboard sort state ── */
-let lbSortKey = 'finalScore';
-let lbSortDir = 'desc';
-
-function sortLeaderboard(key) {
-  if (lbSortKey === key) {
-    lbSortDir = lbSortDir === 'asc' ? 'desc' : 'asc';
-  } else {
-    lbSortKey = key;
-    lbSortDir = 'desc';
-  }
-  if (_lastLeaderboardData) renderLeaderboard(_lastLeaderboardData);
-}
-
-let _lastLeaderboardData = null;
-
-function renderLeaderboard(data) {
-  _lastLeaderboardData = data;
-
-  /* ── podium (top 3) — always by finalScore desc ── */
-  const podiumEl = document.getElementById('lbPodium');
-  if (podiumEl) {
-    if (data.length === 0) {
-      podiumEl.innerHTML = '<p class="lb-empty">No data yet. Rankings will appear once students complete sessions.</p>';
-    } else {
-      const byScore = [...data].sort((a, b) => b.finalScore - a.finalScore);
-      const medals  = ['🥇', '🥈', '🥉'];
-      const heights = ['lb-podium-1st', 'lb-podium-2nd', 'lb-podium-3rd'];
-      const order   = [1, 0, 2].filter(i => i < byScore.length);
-      podiumEl.innerHTML = `
-        <div class="lb-podium-stage">
-          ${order.map(i => {
-            const s = byScore[i];
-            const initials = (s.firstName[0] + s.lastName[0]).toUpperCase();
-            return `
-              <div class="lb-podium-slot ${heights[i] || ''}">
-                <div class="lb-podium-avatar">${initials}</div>
-                <div class="lb-podium-medal">${medals[i] || ''}</div>
-                <div class="lb-podium-name">${s.firstName} ${s.lastName}</div>
-                <div class="lb-podium-course">${s.course}</div>
-                <div class="lb-podium-score">${s.finalScore} pts</div>
-                <div class="lb-podium-block rank-${i + 1}">
-                  <span class="lb-podium-rank">#${i + 1}</span>
-                </div>
-              </div>`;
-          }).join('')}
-        </div>`;
-    }
-  }
-
-  /* ── sort the table data ── */
-  const sorted = [...data].sort((a, b) => {
-    let valA, valB;
-    if (lbSortKey === 'name') {
-      valA = a.lastName + ' ' + a.firstName;
-      valB = b.lastName + ' ' + b.firstName;
-    } else {
-      valA = a[lbSortKey] ?? 0;
-      valB = b[lbSortKey] ?? 0;
-    }
-    if (valA < valB) return lbSortDir === 'asc' ? -1 : 1;
-    if (valA > valB) return lbSortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  /* ── update sort icons ── */
-  document.querySelectorAll('#leaderboardTable .sort-btns').forEach(el => el.classList.remove('active'));
-  const ths  = document.querySelectorAll('#leaderboardTable th');
-  const keys = ['rank', 'name', 'course', 'perfPoints', 'totalHours', 'taskPoints', 'sessionCount', 'finalScore'];
-  keys.forEach((k, i) => {
-    if (k === lbSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active');
-  });
-
-  /* ── full table ── */
-  const tbody = document.getElementById('leaderboardTableBody');
-  if (!tbody) return;
-
-  if (sorted.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No rankings yet.</td></tr>';
-    return;
-  }
-
-  const rankIcons = ['🥇', '🥈', '🥉'];
-
-  tbody.innerHTML = sorted.map(s => {
-    const byScoreRank = [...data].sort((a, b) => b.finalScore - a.finalScore)
-      .findIndex(r => r.idNumber === s.idNumber) + 1;
-    const rankDisplay = byScoreRank <= 3
-      ? `<span class="lb-rank-medal">${rankIcons[byScoreRank - 1]} ${byScoreRank}</span>`
-      : `<span class="lb-rank-num">#${byScoreRank}</span>`;
-
-    const barPerf  = Math.min(100, s.perfPoints);
-    const barHours = Math.min(100, (s.totalHours / 100) * 100);
-    const barTask  = Math.min(100, s.taskPoints);
-    const taskRatio = s.tasksTotal > 0 ? `${s.tasksDone}/${s.tasksTotal} done` : '—';
-    const scoreClass = byScoreRank === 1 ? 'lb-score-gold'
-      : byScoreRank === 2 ? 'lb-score-silver'
-      : byScoreRank === 3 ? 'lb-score-bronze'
-      : 'lb-score-normal';
-
-    return `
-      <tr class="${byScoreRank <= 3 ? 'lb-top-row' : ''}">
-        <td>${rankDisplay}</td>
-        <td>
-          <div class="lb-student-cell">
-            <div class="lb-student-avatar">${(s.firstName[0]+s.lastName[0]).toUpperCase()}</div>
-            <div>
-              <div class="lb-student-name">${s.firstName} ${s.lastName}</div>
-              <div class="lb-student-year">${s.yearLevel}</div>
-            </div>
-          </div>
-        </td>
-        <td><span class="lb-course-badge">${s.course}</span></td>
-        <td>
-          <div class="lb-score-cell">
-            <span>${s.perfPoints}</span>
-            <div class="lb-mini-bar"><div class="lb-mini-fill perf" style="width:${barPerf}%"></div></div>
-          </div>
-        </td>
-        <td>
-          <div class="lb-score-cell">
-            <span>${s.totalHours}h</span>
-            <div class="lb-mini-bar"><div class="lb-mini-fill hours" style="width:${barHours}%"></div></div>
-          </div>
-        </td>
-        <td>
-          <div class="lb-score-cell">
-            <span>${s.taskPoints} <small class="text-muted">(${taskRatio})</small></span>
-            <div class="lb-mini-bar"><div class="lb-mini-fill task" style="width:${barTask}%"></div></div>
-          </div>
-        </td>
-        <td>${s.sessionCount}</td>
-        <td><span class="lb-final-score ${scoreClass}">${s.finalScore}</span></td>
-      </tr>`;
-  }).join('');
-}
-
-/* ══════════════════════════════════════════════════════
-   ADMIN LEADERBOARD MANAGEMENT
-══════════════════════════════════════════════════════ */
-
-function switchLbAdminTab(tab) {
-  ['points', 'tasks', 'view'].forEach(t => {
-    const content = document.getElementById(`lbAdminTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
-    const btn     = document.getElementById(`lbAdminTabBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
-    if (content) content.style.display = t === tab ? '' : 'none';
-    if (btn)     btn.classList.toggle('active', t === tab);
-  });
-  if (tab === 'view') loadAdminLeaderboard();
-}
-
-/* ── Award performance points ── */
-function awardPerformancePoints() {
-  const idNumber = document.getElementById('lbPointsIdNumber').value.trim();
-  const points   = document.getElementById('lbPointsAmount').value;
-  const reason   = document.getElementById('lbPointsReason').value.trim();
-  const msgEl    = document.getElementById('lbPointsMsg');
-  const token    = localStorage.getItem('ccs_admin_token');
-
-  if (!idNumber || !points) {
-    msgEl.style.color = '#dc3545';
-    msgEl.textContent = '✗ Please enter an ID number and points amount.';
-    return;
-  }
-
-  fetch('/api/admin/performance-points', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-    body: JSON.stringify({ idNumber, points: parseInt(points), reason }),
-  })
-    .then(res => res.json())
-    .then(result => {
-      if (result.success) {
-        msgEl.style.color = '#198754';
-        msgEl.textContent = `✓ +${points} points awarded to ${idNumber}!`;
-        document.getElementById('lbPointsIdNumber').value = '';
-        document.getElementById('lbPointsAmount').value   = '';
-        document.getElementById('lbPointsReason').value   = '';
-        loadAdminPointsHistory();
-      } else {
-        msgEl.style.color = '#dc3545';
-        msgEl.textContent = '✗ ' + (result.message || 'Failed.');
-      }
-    })
-    .catch(() => { msgEl.style.color = '#dc3545'; msgEl.textContent = '✗ Server error.'; });
-}
-
-/* ── Load points history ── */
-function loadAdminPointsHistory() {
-  const token = localStorage.getItem('ccs_admin_token');
-  fetch('/api/admin/performance-points/all', {
-    headers: { 'Authorization': 'Bearer ' + token }
-  })
-    .then(res => res.json())
-    .then(result => {
-      // fallback: use leaderboard to collect all awarded
-      renderAdminPointsHistory(result.rows || []);
-    })
-    .catch(() => {});
-}
-
-// Patch: add a "get all" route response — we'll fetch via leaderboard instead
-function _fetchAllPointsHistory() {
-  const token = localStorage.getItem('ccs_admin_token');
-  // Grab from tasks endpoint as proxy to show recent activity
-  fetch('/api/admin/tasks', { headers: { 'Authorization': 'Bearer ' + token } })
-    .then(() => {})
-    .catch(() => {});
-}
-
-/* ── admin points history sort state ── */
-let lbPointsSortKey = 'awarded_at';
-let lbPointsSortDir = 'desc';
-let _lastPointsData = null;
-
-function sortLbPoints(key) {
-  if (lbPointsSortKey === key) lbPointsSortDir = lbPointsSortDir === 'asc' ? 'desc' : 'asc';
-  else { lbPointsSortKey = key; lbPointsSortDir = 'asc'; }
-  if (_lastPointsData) renderAdminPointsHistory(_lastPointsData);
-}
-
-function renderAdminPointsHistory(rows) {
-  _lastPointsData = rows;
-  const tbody = document.getElementById('lbPointsHistoryBody');
-  if (!tbody) return;
-  if (!rows || rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No awards yet.</td></tr>';
-    return;
-  }
-
-  const sorted = [...rows].sort((a, b) => {
-    let valA = a[lbPointsSortKey] ?? '';
-    let valB = b[lbPointsSortKey] ?? '';
-    if (lbPointsSortKey === 'name') { valA = (a.first_name||'') + ' ' + (a.last_name||''); valB = (b.first_name||'') + ' ' + (b.last_name||''); }
-    if (lbPointsSortKey === 'points') return lbPointsSortDir === 'asc' ? a.points - b.points : b.points - a.points;
-    if (valA < valB) return lbPointsSortDir === 'asc' ? -1 : 1;
-    if (valA > valB) return lbPointsSortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  /* update sort icons */
-  document.querySelectorAll('#lbPointsHistoryTable .sort-btns').forEach(el => el.classList.remove('active'));
-  const ths  = document.querySelectorAll('#lbPointsHistoryTable th');
-  const keys = ['id_number', 'name', 'points', 'reason', 'awarded_at'];
-  keys.forEach((k, i) => { if (k === lbPointsSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active'); });
-
-  tbody.innerHTML = sorted.slice(0, 50).map(r => `
-    <tr>
-      <td>${r.id_number}</td>
-      <td>${r.first_name ? r.first_name + ' ' + r.last_name : '—'}</td>
-      <td><span class="lb-pts-badge">+${r.points}</span></td>
-      <td>${r.reason || '—'}</td>
-      <td>${r.awarded_at || '—'}</td>
-    </tr>
-  `).join('');
-}
-
-/* ── admin tasks sort state ── */
-let lbTasksSortKey = 'assigned_at';
-let lbTasksSortDir = 'desc';
-let _lastTasksData = null;
-
-function sortLbTasks(key) {
-  if (lbTasksSortKey === key) lbTasksSortDir = lbTasksSortDir === 'asc' ? 'desc' : 'asc';
-  else { lbTasksSortKey = key; lbTasksSortDir = 'asc'; }
-  if (_lastTasksData) renderAdminTasks(_lastTasksData);
-}
-
-function renderAdminTasks(tasks) {
-  _lastTasksData = tasks;
-  const tbody = document.getElementById('lbTasksBody');
-  if (!tbody) return;
-  if (!tasks || tasks.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No tasks yet.</td></tr>';
-    return;
-  }
-
-  const sorted = [...tasks].sort((a, b) => {
-    let valA, valB;
-    if (lbTasksSortKey === 'name') { valA = (a.first_name||'') + ' ' + (a.last_name||''); valB = (b.first_name||'') + ' ' + (b.last_name||''); }
-    else if (lbTasksSortKey === 'points') return lbTasksSortDir === 'asc' ? a.points - b.points : b.points - a.points;
-    else if (lbTasksSortKey === 'status') { valA = a.completed ? 'done' : 'pending'; valB = b.completed ? 'done' : 'pending'; }
-    else { valA = String(a[lbTasksSortKey] ?? ''); valB = String(b[lbTasksSortKey] ?? ''); }
-    if (valA < valB) return lbTasksSortDir === 'asc' ? -1 : 1;
-    if (valA > valB) return lbTasksSortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  /* update sort icons */
-  document.querySelectorAll('#lbTasksTable .sort-btns').forEach(el => el.classList.remove('active'));
-  const ths  = document.querySelectorAll('#lbTasksTable th');
-  const keys = ['name', 'id_number', 'title', 'points', 'assigned_at', 'status'];
-  keys.forEach((k, i) => { if (k === lbTasksSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active'); });
-
-  tbody.innerHTML = sorted.map(t => `
-    <tr>
-      <td>${t.first_name ? t.first_name + ' ' + t.last_name : '—'}</td>
-      <td>${t.id_number}</td>
-      <td>
-        <div class="fw-semibold" style="font-size:0.85rem;">${t.title}</div>
-        ${t.description ? `<div class="text-muted" style="font-size:0.75rem;">${t.description}</div>` : ''}
-      </td>
-      <td><span class="lb-pts-badge">+${t.points}</span></td>
-      <td style="font-size:0.78rem;">${(t.assigned_at || '').slice(0, 16)}</td>
-      <td>${t.completed ? `<span class="sitin-status done">✓ Done</span>` : `<span class="sitin-status active">Pending</span>`}</td>
-      <td>
-        <div class="d-flex gap-1">
-          ${!t.completed ? `<button class="btn-student-edit" onclick="markTaskComplete(${t.id})"><i class="bi bi-check-lg me-1"></i>Complete</button>` : ''}
-          <button class="btn-student-delete" onclick="deleteTask(${t.id})"><i class="bi bi-trash-fill me-1"></i>Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
-}
-
-/* ── admin rankings sort state ── */
-let lbAdminRankSortKey = 'finalScore';
-let lbAdminRankSortDir = 'desc';
-let _lastAdminRankData = null;
-
-function sortLbAdminRank(key) {
-  if (lbAdminRankSortKey === key) lbAdminRankSortDir = lbAdminRankSortDir === 'asc' ? 'desc' : 'asc';
-  else { lbAdminRankSortKey = key; lbAdminRankSortDir = 'asc'; }
-  if (_lastAdminRankData) _renderAdminRankTable(_lastAdminRankData);
-}
-
-function _renderAdminRankTable(data) {
-  _lastAdminRankData = data;
-  const tbody = document.getElementById('lbAdminTableBody');
-  if (!tbody) return;
-  if (!data || data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No data yet.</td></tr>';
-    return;
-  }
-
-  const sorted = [...data].sort((a, b) => {
-    let valA, valB;
-    if (lbAdminRankSortKey === 'name') { valA = a.lastName + ' ' + a.firstName; valB = b.lastName + ' ' + b.firstName; }
-    else { valA = a[lbAdminRankSortKey] ?? 0; valB = b[lbAdminRankSortKey] ?? 0; }
-    if (typeof valA === 'number') return lbAdminRankSortDir === 'asc' ? valA - valB : valB - valA;
-    if (valA < valB) return lbAdminRankSortDir === 'asc' ? -1 : 1;
-    if (valA > valB) return lbAdminRankSortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  /* update sort icons */
-  document.querySelectorAll('#lbAdminTable .sort-btns').forEach(el => el.classList.remove('active'));
-  const ths  = document.querySelectorAll('#lbAdminTable th');
-  const keys = ['rank', 'name', 'course', 'perfPoints', 'totalHours', 'taskPoints', 'sessionCount', 'finalScore'];
-  keys.forEach((k, i) => { if (k === lbAdminRankSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active'); });
-
-  const medals = ['🥇', '🥈', '🥉'];
-  tbody.innerHTML = sorted.map(s => {
-    const origRank = data.sort((a,b) => b.finalScore - a.finalScore).findIndex(r => r.idNumber === s.idNumber) + 1;
-    return `<tr>
-      <td>${origRank <= 3 ? medals[origRank-1] + ' ' : ''}#${origRank}</td>
-      <td>${s.firstName} ${s.lastName}</td>
-      <td>${s.course}</td>
-      <td>${s.perfPoints}</td>
-      <td>${s.totalHours}h</td>
-      <td>${s.taskPoints}</td>
-      <td>${s.sessionCount}</td>
-      <td><strong>${s.finalScore}</strong></td>
-    </tr>`;
-  }).join('');
-}
-
-function loadAdminLeaderboard() {
-  fetch('/api/leaderboard')
-    .then(res => res.json())
-    .then(result => _renderAdminRankTable(result.leaderboard || []))
-    .catch(() => {});
-}
-
-/* ── add GET all performance points route to admin (patch fetch) ── */
-// Override loadAdminPointsHistory to use leaderboard data as source
-loadAdminPointsHistory = function () {
-  const token = localStorage.getItem('ccs_admin_token');
-  // We need a dedicated endpoint — use a workaround: fetch tasks + leaderboard
-  fetch('/api/leaderboard')
-    .then(res => res.json())
-    .then(() => {
-      // Attempt the /all endpoint (added in server patch)
-      return fetch('/api/admin/performance-points/all', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-    })
-    .then(res => res.json())
-    .then(result => renderAdminPointsHistory(result.rows || []))
-    .catch(() => {
-      // silently fail — table stays empty until data exists
-    });
-};
