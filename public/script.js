@@ -4029,6 +4029,53 @@ function renderAdminPointsHistory(rows) {
   `).join('');
 }
 
+/* ── Assign task ── */
+function assignTask() {
+  const idNumber = document.getElementById('lbTaskIdNumber').value.trim();
+  const title    = document.getElementById('lbTaskTitle').value.trim();
+  const desc     = document.getElementById('lbTaskDesc').value.trim();
+  const points   = document.getElementById('lbTaskPoints').value;
+  const msgEl    = document.getElementById('lbTaskMsg');
+  const token    = localStorage.getItem('ccs_admin_token');
+ 
+  if (!idNumber || !title) {
+    msgEl.style.color = '#dc3545';
+    msgEl.textContent = '✗ Student ID and task title are required.';
+    return;
+  }
+ 
+  fetch('/api/admin/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ idNumber, title, description: desc, points: parseInt(points) || 10 }),
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        msgEl.style.color = '#198754';
+        msgEl.textContent = `✓ Task assigned to ${idNumber}!`;
+        document.getElementById('lbTaskIdNumber').value = '';
+        document.getElementById('lbTaskTitle').value    = '';
+        document.getElementById('lbTaskDesc').value     = '';
+        document.getElementById('lbTaskPoints').value   = '10';
+        loadAdminTasks();
+      } else {
+        msgEl.style.color = '#dc3545';
+        msgEl.textContent = '✗ ' + (result.message || 'Failed.');
+      }
+    })
+    .catch(() => { msgEl.style.color = '#dc3545'; msgEl.textContent = '✗ Server error.'; });
+}
+ 
+/* ── Load all tasks (admin) ── */
+function loadAdminTasks() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/tasks', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(res => res.json())
+    .then(result => renderAdminTasks(result.tasks || []))
+    .catch(() => {});
+}
+
 /* ── admin tasks sort state ── */
 let lbTasksSortKey = 'assigned_at';
 let lbTasksSortDir = 'desc';
@@ -4085,6 +4132,35 @@ function renderAdminTasks(tasks) {
       </td>
     </tr>
   `).join('');
+}
+
+/* ── Mark task complete ── */
+function markTaskComplete(id) {
+  if (!confirm('Mark this task as completed and award points to the student?')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch(`/api/admin/tasks/${id}/complete`, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) loadAdminTasks();
+      else alert(result.message || 'Failed.');
+    })
+    .catch(() => alert('Server error.'));
+}
+ 
+/* ── Delete task ── */
+function deleteTask(id) {
+  if (!confirm('Delete this task?')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch(`/api/admin/tasks/${id}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => { if (result.success) loadAdminTasks(); })
+    .catch(() => {});
 }
 
 /* ── admin rankings sort state ── */
