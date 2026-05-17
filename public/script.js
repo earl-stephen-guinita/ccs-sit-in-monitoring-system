@@ -1380,8 +1380,129 @@ function loadSitin() {
       sitinData = result.logs || [];
       sitinPage = 1;
       renderSitinTable();
+      renderSitinAnalytics(sitinData);
     })
     .catch(() => {});
+} 
+
+/* ── render sit-in analytics pie charts ── */
+function renderSitinAnalytics(logs) {
+  if (!logs || logs.length === 0) {
+    renderEmptyPieChart('sitinProgrammingChart', 'sitinProgrammingLegend', 'No programming data yet');
+    renderEmptyPieChart('sitinLabChart', 'sitinLabLegend', 'No lab usage data yet');
+    return;
+  }
+
+  // ── tally programming languages ──
+  const programmingTally = {};
+  const labTally = {};
+
+  for (const log of logs) {
+    // count programming languages
+    programmingTally[log.purpose] = (programmingTally[log.purpose] || 0) + 1;
+    // count laboratories
+    labTally[log.lab] = (labTally[log.lab] || 0) + 1;
+  }
+
+  const progLabels = Object.keys(programmingTally);
+  const progCounts = Object.values(programmingTally);
+  const labLabels = Object.keys(labTally);
+  const labCounts = Object.values(labTally);
+
+  const palette = ['#7c3aed','#f5a623','#10b981','#3b82f6','#ef4444','#a855f7','#ec4899','#06b6d4'];
+
+  // ── draw programming language chart ──
+  drawPieChart('sitinProgrammingChart', progLabels, progCounts, palette);
+  renderPieLegend('sitinProgrammingLegend', progLabels, progCounts, palette);
+
+  // ── draw laboratory chart ──
+  drawPieChart('sitinLabChart', labLabels, labCounts, palette);
+  renderPieLegend('sitinLabLegend', labLabels, labCounts, palette);
+}
+
+/* ── draw pie chart on canvas ── */
+function drawPieChart(canvasId, labels, counts, palette) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const total = counts.reduce((a, b) => a + b, 0);
+  let startAngle = -Math.PI / 2;
+
+  ctx.clearRect(0, 0, 220, 220);
+
+  if (total === 0) {
+    ctx.beginPath();
+    ctx.arc(110, 110, 90, 0, Math.PI * 2);
+    ctx.fillStyle = '#e8d8ff';
+    ctx.fill();
+    ctx.fillStyle = '#9b72cf';
+    ctx.font = '600 13px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data yet', 110, 115);
+    return;
+  }
+
+  labels.forEach((label, i) => {
+    const slice = (counts[i] / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(110, 110);
+    ctx.arc(110, 110, 90, startAngle, startAngle + slice);
+    ctx.closePath();
+    ctx.fillStyle = palette[i % palette.length];
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    startAngle += slice;
+  });
+
+  // center hole (donut)
+  ctx.beginPath();
+  ctx.arc(110, 110, 48, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.fillStyle = '#2d0f5e';
+  ctx.font = '800 22px Segoe UI';
+  ctx.textAlign = 'center';
+  ctx.fillText(total, 110, 118);
+}
+
+/* ── render pie legend ── */
+function renderPieLegend(legendId, labels, counts, palette) {
+  const legendEl = document.getElementById(legendId);
+  if (!legendEl) return;
+
+  if (labels.length === 0) {
+    legendEl.innerHTML = '<p class="text-muted small text-center">No data yet.</p>';
+    return;
+  }
+
+  legendEl.innerHTML = labels.map((label, i) => `
+    <div class="sitin-pie-legend-item">
+      <div class="sitin-pie-legend-dot" style="background:${palette[i % palette.length]};"></div>
+      <span>${label}</span>
+      <span class="sitin-pie-legend-count">${counts[i]}</span>
+    </div>
+  `).join('');
+}
+
+/* ── render empty pie chart ── */
+function renderEmptyPieChart(canvasId, legendId, message) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 220, 220);
+  ctx.beginPath();
+  ctx.arc(110, 110, 90, 0, Math.PI * 2);
+  ctx.fillStyle = '#e8d8ff';
+  ctx.fill();
+  ctx.fillStyle = '#9b72cf';
+  ctx.font = '600 13px Segoe UI';
+  ctx.textAlign = 'center';
+  ctx.fillText(message, 110, 115);
+
+  const legendEl = document.getElementById(legendId);
+  if (legendEl) legendEl.innerHTML = '<p class="text-muted small text-center">No data yet.</p>';
 }
 
 /* ── sort sitin ── */
@@ -3162,7 +3283,6 @@ function _openRecordsPrintWindow(rows, pdf) {
 
 /* ══════════════════════════════════════════════════════
    SIT-IN PAGE — TWO TABS
-   Append this to the very bottom of script.js
    ══════════════════════════════════════════════════════ */
 
 /* ── tab switcher ── */
@@ -3173,6 +3293,7 @@ function switchSitinTab(tab) {
   document.getElementById('tabBtnSitinRecords').classList.toggle('active', isRecords);
   document.getElementById('tabBtnSitinActive').classList.toggle('active', !isRecords);
   if (!isRecords) loadActiveSitin();
+  else renderSitinAnalytics(sitinData); // refresh analytics when returning to records tab
 }
 
 /* ── active students state ── */
@@ -3371,4 +3492,539 @@ adminLogoutSitin = function (id) {
       }
     })
     .catch(() => alert('Could not reach the server.'));
+};
+
+/* ══════════════════════════════════════════════════════
+   RESERVATION TOGGLE — ADMIN
+   ══════════════════════════════════════════════════════ */
+
+/* ── load current toggle state from server ── */
+function loadReservationToggle() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/settings', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (!result.success) return;
+      _applyReservationToggleUI(result.reservationsEnabled);
+    })
+    .catch(() => {});
+}
+
+/* ── apply UI state for the toggle ── */
+function _applyReservationToggleUI(enabled) {
+  const input   = document.getElementById('resToggleInput');
+  const label   = document.getElementById('resToggleLabel');
+  const wrap    = document.getElementById('resToggleWrap');
+  if (!input || !label || !wrap) return;
+
+  input.checked = enabled;
+
+  if (enabled) {
+    label.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>Reservations: <strong>Enabled</strong>';
+    label.className = 'res-toggle-label enabled';
+    wrap.classList.remove('disabled');
+  } else {
+    label.innerHTML = '<i class="bi bi-slash-circle-fill me-1"></i>Reservations: <strong>Disabled</strong>';
+    label.className = 'res-toggle-label disabled';
+    wrap.classList.add('disabled');
+  }
+}
+
+/* ── toggle handler — called on checkbox change ── */
+function toggleReservations(enabled) {
+  const token = localStorage.getItem('ccs_admin_token');
+
+  const confirmMsg = enabled
+    ? 'Enable student reservations? Students will be able to reserve PCs again.'
+    : 'Disable student reservations? Students will not be able to make new reservations. All students will be notified.';
+
+  if (!confirm(confirmMsg)) {
+    // revert checkbox
+    const input = document.getElementById('resToggleInput');
+    if (input) input.checked = !enabled;
+    return;
+  }
+
+  fetch('/api/admin/settings', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token
+    },
+    body: JSON.stringify({ reservationsEnabled: enabled })
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        _applyReservationToggleUI(result.reservationsEnabled);
+      } else {
+        alert(result.message || 'Failed to update setting.');
+        // revert
+        const input = document.getElementById('resToggleInput');
+        if (input) input.checked = !enabled;
+      }
+    })
+    .catch(() => {
+      alert('Could not reach the server.');
+      const input = document.getElementById('resToggleInput');
+      if (input) input.checked = !enabled;
+    });
+}
+
+/* ── patch loadAdminReservations to also load toggle state ── */
+const _origLoadAdminReservations = loadAdminReservations;
+loadAdminReservations = function () {
+  _origLoadAdminReservations();
+  loadReservationToggle();
+};
+
+/* ══════════════════════════════════════════════════════
+   RESERVATION PAGE — STUDENT SIDE
+   Check toggle before showing the form; patch
+   loadReservationForm and submitReservation.
+   ══════════════════════════════════════════════════════ */
+
+const _origLoadReservationForm = loadReservationForm;
+loadReservationForm = function () {
+  _origLoadReservationForm();
+  _checkReservationsEnabled();
+};
+
+function _checkReservationsEnabled() {
+  if (!currentUser || !getToken()) return;
+
+  authFetch('/api/settings')
+    .then(res => res.json())
+    .then(result => {
+      const banner  = document.getElementById('resDisabledBanner');
+      const formBody = document.querySelector('.reservation-form-body');
+      if (!result.reservationsEnabled) {
+        if (banner) banner.style.display = '';
+        if (formBody) formBody.style.opacity = '0.45';
+        if (formBody) formBody.style.pointerEvents = 'none';
+      } else {
+        if (banner) banner.style.display = 'none';
+        if (formBody) { formBody.style.opacity = ''; formBody.style.pointerEvents = ''; }
+      }
+    })
+    .catch(() => {});
+}
+
+/* =====================================================
+   LEADERBOARD SYSTEM
+   ===================================================== */
+
+/* ── patch showPage to support leaderboard pages ── */
+const _origShowPageLb = showPage;
+showPage = function (pageKey) {
+  _origShowPageLb(pageKey);
+  if (pageKey === 'leaderboard')      loadLeaderboard();
+  if (pageKey === 'adminleaderboard') {
+    switchLbAdminTab('points');
+    loadAdminPointsHistory();
+    loadAdminTasks();
+  }
+};
+
+/* ── patch showAdminNav to include leaderboard ── */
+const _origShowAdminNavLb = showAdminNav;
+showAdminNav = function () {
+  _origShowAdminNavLb();
+  const lbNav = document.getElementById('navAdminLeaderboard');
+  if (lbNav) lbNav.style.display = '';
+};
+
+/* ── patch adminLogout to hide leaderboard nav ── */
+const _origAdminLogoutLb = adminLogout;
+adminLogout = function () {
+  const lbNav = document.getElementById('navAdminLeaderboard');
+  if (lbNav) lbNav.style.display = 'none';
+  _origAdminLogoutLb();
+};
+
+/* ── patch setAdminNav ── */
+const _origSetAdminNavLb = setAdminNav;
+setAdminNav = function (page) {
+  _origSetAdminNavLb(page);
+  const lbNav = document.getElementById('navAdminLeaderboard');
+  if (lbNav) lbNav.classList.toggle('active', page === 'adminleaderboard');
+};
+
+/* ── restore admin leaderboard nav on page load ── */
+document.addEventListener('DOMContentLoaded', function () {
+  const adminToken = localStorage.getItem('ccs_admin_token');
+  if (adminToken) {
+    const lbNav = document.getElementById('navAdminLeaderboard');
+    if (lbNav) lbNav.style.display = '';
+  }
+});
+
+/* ══════════════════════════════════════════════════════
+   PUBLIC LEADERBOARD
+══════════════════════════════════════════════════════ */
+
+function loadLeaderboard() {
+  fetch('/api/leaderboard')
+    .then(res => res.json())
+    .then(result => {
+      if (!result.success) return;
+      renderLeaderboard(result.leaderboard);
+      const el = document.getElementById('lbUpdatedAt');
+      if (el) el.textContent = 'Updated: ' + new Date().toLocaleTimeString();
+    })
+    .catch(() => {});
+}
+
+function renderLeaderboard(data) {
+  /* ── podium (top 3) ── */
+  const podiumEl = document.getElementById('lbPodium');
+  if (podiumEl) {
+    if (data.length === 0) {
+      podiumEl.innerHTML = '<p class="lb-empty">No data yet. Rankings will appear once students complete sessions.</p>';
+    } else {
+      const medals  = ['🥇', '🥈', '🥉'];
+      const heights = ['lb-podium-1st', 'lb-podium-2nd', 'lb-podium-3rd'];
+      // podium order: 2nd, 1st, 3rd
+      const order = [1, 0, 2].filter(i => i < data.length);
+
+      podiumEl.innerHTML = `
+        <div class="lb-podium-stage">
+          ${order.map(i => {
+            const s = data[i];
+            const initials = (s.firstName[0] + s.lastName[0]).toUpperCase();
+            return `
+              <div class="lb-podium-slot ${heights[s.rank - 1] || ''}">
+                <div class="lb-podium-avatar">${initials}</div>
+                <div class="lb-podium-medal">${medals[s.rank - 1] || ''}</div>
+                <div class="lb-podium-name">${s.firstName} ${s.lastName}</div>
+                <div class="lb-podium-course">${s.course}</div>
+                <div class="lb-podium-score">${s.finalScore} pts</div>
+                <div class="lb-podium-block rank-${s.rank}">
+                  <span class="lb-podium-rank">#${s.rank}</span>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>`;
+    }
+  }
+
+  /* ── full table ── */
+  const tbody = document.getElementById('leaderboardTableBody');
+  if (!tbody) return;
+
+  if (data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No rankings yet.</td></tr>';
+    return;
+  }
+
+  const rankIcons = ['🥇', '🥈', '🥉'];
+
+  tbody.innerHTML = data.map(s => {
+    const rankDisplay = s.rank <= 3
+      ? `<span class="lb-rank-medal">${rankIcons[s.rank - 1]} ${s.rank}</span>`
+      : `<span class="lb-rank-num">#${s.rank}</span>`;
+
+    const barPerf = Math.min(100, s.perfPoints);
+    const barHours = Math.min(100, (s.totalHours / 100) * 100);
+    const barTask  = Math.min(100, s.taskPoints);
+
+    const taskRatio = s.tasksTotal > 0
+      ? `${s.tasksDone}/${s.tasksTotal} done`
+      : '—';
+
+    const scoreClass = s.rank === 1 ? 'lb-score-gold'
+      : s.rank === 2 ? 'lb-score-silver'
+      : s.rank === 3 ? 'lb-score-bronze'
+      : 'lb-score-normal';
+
+    return `
+      <tr class="${s.rank <= 3 ? 'lb-top-row' : ''}">
+        <td>${rankDisplay}</td>
+        <td>
+          <div class="lb-student-cell">
+            <div class="lb-student-avatar">${(s.firstName[0]+s.lastName[0]).toUpperCase()}</div>
+            <div>
+              <div class="lb-student-name">${s.firstName} ${s.lastName}</div>
+              <div class="lb-student-year">${s.yearLevel}</div>
+            </div>
+          </div>
+        </td>
+        <td><span class="lb-course-badge">${s.course}</span></td>
+        <td>
+          <div class="lb-score-cell">
+            <span>${s.perfPoints}</span>
+            <div class="lb-mini-bar"><div class="lb-mini-fill perf" style="width:${barPerf}%"></div></div>
+          </div>
+        </td>
+        <td>
+          <div class="lb-score-cell">
+            <span>${s.totalHours}h</span>
+            <div class="lb-mini-bar"><div class="lb-mini-fill hours" style="width:${barHours}%"></div></div>
+          </div>
+        </td>
+        <td>
+          <div class="lb-score-cell">
+            <span>${s.taskPoints} <small class="text-muted">(${taskRatio})</small></span>
+            <div class="lb-mini-bar"><div class="lb-mini-fill task" style="width:${barTask}%"></div></div>
+          </div>
+        </td>
+        <td>${s.sessionCount}</td>
+        <td><span class="lb-final-score ${scoreClass}">${s.finalScore}</span></td>
+      </tr>`;
+  }).join('');
+}
+
+/* ══════════════════════════════════════════════════════
+   ADMIN LEADERBOARD MANAGEMENT
+══════════════════════════════════════════════════════ */
+
+function switchLbAdminTab(tab) {
+  ['points', 'tasks', 'view'].forEach(t => {
+    const content = document.getElementById(`lbAdminTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+    const btn     = document.getElementById(`lbAdminTabBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
+    if (content) content.style.display = t === tab ? '' : 'none';
+    if (btn)     btn.classList.toggle('active', t === tab);
+  });
+  if (tab === 'view') loadAdminLeaderboard();
+}
+
+/* ── Award performance points ── */
+function awardPerformancePoints() {
+  const idNumber = document.getElementById('lbPointsIdNumber').value.trim();
+  const points   = document.getElementById('lbPointsAmount').value;
+  const reason   = document.getElementById('lbPointsReason').value.trim();
+  const msgEl    = document.getElementById('lbPointsMsg');
+  const token    = localStorage.getItem('ccs_admin_token');
+
+  if (!idNumber || !points) {
+    msgEl.style.color = '#dc3545';
+    msgEl.textContent = '✗ Please enter an ID number and points amount.';
+    return;
+  }
+
+  fetch('/api/admin/performance-points', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ idNumber, points: parseInt(points), reason }),
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        msgEl.style.color = '#198754';
+        msgEl.textContent = `✓ +${points} points awarded to ${idNumber}!`;
+        document.getElementById('lbPointsIdNumber').value = '';
+        document.getElementById('lbPointsAmount').value   = '';
+        document.getElementById('lbPointsReason').value   = '';
+        loadAdminPointsHistory();
+      } else {
+        msgEl.style.color = '#dc3545';
+        msgEl.textContent = '✗ ' + (result.message || 'Failed.');
+      }
+    })
+    .catch(() => { msgEl.style.color = '#dc3545'; msgEl.textContent = '✗ Server error.'; });
+}
+
+/* ── Load points history ── */
+function loadAdminPointsHistory() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/performance-points/all', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      // fallback: use leaderboard to collect all awarded
+      renderAdminPointsHistory(result.rows || []);
+    })
+    .catch(() => {});
+}
+
+// Patch: add a "get all" route response — we'll fetch via leaderboard instead
+function _fetchAllPointsHistory() {
+  const token = localStorage.getItem('ccs_admin_token');
+  // Grab from tasks endpoint as proxy to show recent activity
+  fetch('/api/admin/tasks', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(() => {})
+    .catch(() => {});
+}
+
+function renderAdminPointsHistory(rows) {
+  const tbody = document.getElementById('lbPointsHistoryBody');
+  if (!tbody) return;
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No awards yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.slice(0, 50).map(r => `
+    <tr>
+      <td>${r.id_number}</td>
+      <td>${r.first_name ? r.first_name + ' ' + r.last_name : '—'}</td>
+      <td><span class="lb-pts-badge">+${r.points}</span></td>
+      <td>${r.reason || '—'}</td>
+      <td>${r.awarded_at || '—'}</td>
+    </tr>
+  `).join('');
+}
+
+/* ── Assign task ── */
+function assignTask() {
+  const idNumber = document.getElementById('lbTaskIdNumber').value.trim();
+  const title    = document.getElementById('lbTaskTitle').value.trim();
+  const desc     = document.getElementById('lbTaskDesc').value.trim();
+  const points   = document.getElementById('lbTaskPoints').value;
+  const msgEl    = document.getElementById('lbTaskMsg');
+  const token    = localStorage.getItem('ccs_admin_token');
+
+  if (!idNumber || !title) {
+    msgEl.style.color = '#dc3545';
+    msgEl.textContent = '✗ Student ID and task title are required.';
+    return;
+  }
+
+  fetch('/api/admin/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ idNumber, title, description: desc, points: parseInt(points) || 10 }),
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        msgEl.style.color = '#198754';
+        msgEl.textContent = `✓ Task assigned to ${idNumber}!`;
+        document.getElementById('lbTaskIdNumber').value = '';
+        document.getElementById('lbTaskTitle').value    = '';
+        document.getElementById('lbTaskDesc').value     = '';
+        document.getElementById('lbTaskPoints').value   = '10';
+        loadAdminTasks();
+      } else {
+        msgEl.style.color = '#dc3545';
+        msgEl.textContent = '✗ ' + (result.message || 'Failed.');
+      }
+    })
+    .catch(() => { msgEl.style.color = '#dc3545'; msgEl.textContent = '✗ Server error.'; });
+}
+
+/* ── Load all tasks (admin) ── */
+function loadAdminTasks() {
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch('/api/admin/tasks', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(res => res.json())
+    .then(result => renderAdminTasks(result.tasks || []))
+    .catch(() => {});
+}
+
+function renderAdminTasks(tasks) {
+  const tbody = document.getElementById('lbTasksBody');
+  if (!tbody) return;
+  if (tasks.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No tasks yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = tasks.map(t => `
+    <tr>
+      <td>${t.first_name ? t.first_name + ' ' + t.last_name : '—'}</td>
+      <td>${t.id_number}</td>
+      <td>
+        <div class="fw-semibold" style="font-size:0.85rem;">${t.title}</div>
+        ${t.description ? `<div class="text-muted" style="font-size:0.75rem;">${t.description}</div>` : ''}
+      </td>
+      <td><span class="lb-pts-badge">+${t.points}</span></td>
+      <td style="font-size:0.78rem;">${(t.assigned_at || '').slice(0, 16)}</td>
+      <td>
+        ${t.completed
+          ? `<span class="sitin-status done">✓ Done</span>`
+          : `<span class="sitin-status active">Pending</span>`}
+      </td>
+      <td>
+        <div class="d-flex gap-1">
+          ${!t.completed ? `
+            <button class="btn-student-edit" onclick="markTaskComplete(${t.id})">
+              <i class="bi bi-check-lg me-1"></i>Complete
+            </button>` : ''}
+          <button class="btn-student-delete" onclick="deleteTask(${t.id})">
+            <i class="bi bi-trash-fill me-1"></i>Delete
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+/* ── Mark task complete ── */
+function markTaskComplete(id) {
+  if (!confirm('Mark this task as completed and award points to the student?')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch(`/api/admin/tasks/${id}/complete`, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) loadAdminTasks();
+      else alert(result.message || 'Failed.');
+    })
+    .catch(() => alert('Server error.'));
+}
+
+/* ── Delete task ── */
+function deleteTask(id) {
+  if (!confirm('Delete this task?')) return;
+  const token = localStorage.getItem('ccs_admin_token');
+  fetch(`/api/admin/tasks/${id}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+    .then(res => res.json())
+    .then(result => { if (result.success) loadAdminTasks(); })
+    .catch(() => {});
+}
+
+/* ── Admin: view leaderboard ── */
+function loadAdminLeaderboard() {
+  fetch('/api/leaderboard')
+    .then(res => res.json())
+    .then(result => {
+      const tbody = document.getElementById('lbAdminTableBody');
+      if (!tbody) return;
+      const data = result.leaderboard || [];
+      if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No data yet.</td></tr>';
+        return;
+      }
+      const medals = ['🥇', '🥈', '🥉'];
+      tbody.innerHTML = data.map(s => `
+        <tr>
+          <td>${s.rank <= 3 ? medals[s.rank-1] + ' ' : ''}#${s.rank}</td>
+          <td>${s.firstName} ${s.lastName}</td>
+          <td>${s.course}</td>
+          <td>${s.perfPoints}</td>
+          <td>${s.totalHours}h</td>
+          <td>${s.taskPoints}</td>
+          <td>${s.sessionCount}</td>
+          <td><strong>${s.finalScore}</strong></td>
+        </tr>
+      `).join('');
+    })
+    .catch(() => {});
+}
+
+/* ── add GET all performance points route to admin (patch fetch) ── */
+// Override loadAdminPointsHistory to use leaderboard data as source
+loadAdminPointsHistory = function () {
+  const token = localStorage.getItem('ccs_admin_token');
+  // We need a dedicated endpoint — use a workaround: fetch tasks + leaderboard
+  fetch('/api/leaderboard')
+    .then(res => res.json())
+    .then(() => {
+      // Attempt the /all endpoint (added in server patch)
+      return fetch('/api/admin/performance-points/all', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+    })
+    .then(res => res.json())
+    .then(result => renderAdminPointsHistory(result.rows || []))
+    .catch(() => {
+      // silently fail — table stays empty until data exists
+    });
 };

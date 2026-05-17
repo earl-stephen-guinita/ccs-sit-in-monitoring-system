@@ -54,6 +54,12 @@
               <li class="nav-item" id="navAbout">
                 <a class="nav-link nav-pill" href="#">About</a>
               </li>
+              <li class="nav-item" id="navLeaderboard">
+                <a class="nav-link nav-pill" href="#"
+                  onclick="showPage('leaderboard'); return false;">
+                  <i class="bi bi-trophy me-1"></i>Leaderboard
+                </a>
+              </li>
               <li class="nav-item" id="navRegisterItem">
                 <a class="nav-link btn-register-nav ms-1" href="#" onclick="showPage('register'); return false;">Register</a>
               </li>
@@ -124,6 +130,12 @@
                   <i class="bi bi-display me-1"></i>Software
                 </a>
               </li>  
+              <li class="nav-item" id="navAdminLeaderboard" style="display:none;">
+                <a class="nav-link nav-pill" href="#"
+                  onclick="showPage('adminleaderboard'); setAdminNav('adminleaderboard'); return false;">
+                  <i class="bi bi-trophy me-1"></i>Leaderboard
+                </a>
+              </li>              
               </li>
               <li class="nav-item" id="navAdminLogout" style="display:none;">
                 <a class="nav-link nav-pill" href="#" onclick="adminLogout(); return false;">Logout</a>
@@ -795,6 +807,18 @@
               <h4 class="reservation-title"><i class="bi bi-calendar-plus me-2"></i>Reserve a Lab</h4>
             </div>
             <div class="reservation-form-body">
+  
+              <!-- ── reservations disabled banner ── -->
+              <div id="resDisabledBanner" style="display:none;">
+                <div class="d-flex align-items-start gap-3">
+                  <i class="bi bi-slash-circle-fill res-disabled-icon"></i>
+                  <div>
+                    <strong>Reservations are currently disabled</strong><br>
+                    The administrator has temporarily disabled lab reservations.
+                    Please check back later or contact your lab administrator.
+                  </div>
+                </div>
+              </div>
     
               <!-- student info (read-only) -->
               <div class="row g-3 mb-3">
@@ -961,10 +985,296 @@
       </div>
     </div>    
 
+    <div id="page-leaderboard" class="page">
+      <div class="lb-page-wrapper">
+        <div class="lb-container">
+    
+          <!-- header -->
+          <div class="lb-header">
+            <div class="lb-header-text">
+              <div class="lb-crown-icon">👑</div>
+              <h2 class="lb-title">Student Leaderboard</h2>
+              <p class="lb-subtitle">College of Computer Studies — Sit-In Champions</p>
+            </div>
+            <button class="lb-refresh-btn" onclick="loadLeaderboard()">
+              <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </button>
+          </div>
+    
+          <!-- score legend -->
+          <div class="lb-legend">
+            <div class="lb-legend-item">
+              <span class="lb-legend-dot" style="background:#7c3aed;"></span>
+              <span>Performance Points <span class="lb-legend-weight">×0.5</span></span>
+            </div>
+            <div class="lb-legend-item">
+              <span class="lb-legend-dot" style="background:#f5a623;"></span>
+              <span>Sit-In Hours <span class="lb-legend-weight">×0.3</span></span>
+            </div>
+            <div class="lb-legend-item">
+              <span class="lb-legend-dot" style="background:#10b981;"></span>
+              <span>Task Completion <span class="lb-legend-weight">×0.2</span></span>
+            </div>
+          </div>
+    
+          <!-- podium (top 3) -->
+          <div class="lb-podium" id="lbPodium">
+            <!-- filled by JS -->
+          </div>
+    
+          <!-- full table -->
+          <div class="lb-table-card">
+            <div class="lb-table-header">
+              <span><i class="bi bi-list-ol me-2"></i>Full Rankings</span>
+              <span class="lb-table-updated" id="lbUpdatedAt"></span>
+            </div>
+            <div class="table-responsive">
+              <table class="lb-table" id="leaderboardTable">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Student</th>
+                    <th>Course</th>
+                    <th title="Performance Points × 0.5">Perf. Pts</th>
+                    <th title="Sit-In Hours × 0.3">Hours</th>
+                    <th title="Task Points × 0.2">Task Pts</th>
+                    <th>Sessions</th>
+                    <th>Final Score</th>
+                  </tr>
+                </thead>
+                <tbody id="leaderboardTableBody">
+                  <tr><td colspan="8" class="text-center text-muted py-4">
+                    <div class="lb-loading"><span class="lb-spinner"></span> Loading rankings…</div>
+                  </td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+    
+        </div>
+      </div>
+    </div>
+    
+    
+    <!-- ── 4. ADMIN LEADERBOARD MANAGEMENT PAGE ── -->
+    <div id="page-adminleaderboard" class="page">
+      <div class="history-page-wrapper">
+        <div class="history-container" style="max-width:1100px;">
+    
+          <!-- tabs -->
+          <div class="sitin-tabs mb-0">
+            <button class="sitin-tab active" id="lbAdminTabBtnPoints"
+                    onclick="switchLbAdminTab('points')">
+              <i class="bi bi-star-fill me-1"></i>Award Points
+            </button>
+            <button class="sitin-tab" id="lbAdminTabBtnTasks"
+                    onclick="switchLbAdminTab('tasks')">
+              <i class="bi bi-check2-square me-1"></i>Manage Tasks
+            </button>
+            <button class="sitin-tab" id="lbAdminTabBtnView"
+                    onclick="switchLbAdminTab('view')">
+              <i class="bi bi-trophy me-1"></i>View Rankings
+            </button>
+          </div>
+    
+          <!-- TAB: Award Points -->
+          <div id="lbAdminTabPoints" style="margin-top:1.25rem;">
+            <div class="history-card">
+              <div class="history-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <h4 class="history-title mb-0"><i class="bi bi-star-fill me-2"></i>Award Performance Points</h4>
+              </div>
+              <div class="p-4">
+                <div class="row g-3">
+                  <div class="col-md-3">
+                    <label class="form-label fw-semibold">Student ID Number</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-person-badge"></i></span>
+                      <input type="text" class="form-control" id="lbPointsIdNumber"
+                            placeholder="Enter ID" />
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label fw-semibold">Points</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-star"></i></span>
+                      <input type="number" class="form-control" id="lbPointsAmount"
+                            placeholder="e.g. 10" min="1" max="100" />
+                    </div>
+                  </div>
+                  <div class="col-md-5">
+                    <label class="form-label fw-semibold">Reason</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-chat-text"></i></span>
+                      <input type="text" class="form-control" id="lbPointsReason"
+                            placeholder="e.g. Excellent participation, clean workstation…" />
+                    </div>
+                  </div>
+                  <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-register w-100" onclick="awardPerformancePoints()">
+                      <i class="bi bi-plus-lg me-1"></i>Award
+                    </button>
+                  </div>
+                </div>
+                <div id="lbPointsMsg" class="form-text mt-2"></div>
+    
+                <!-- history table -->
+                <div class="mt-4">
+                  <div class="lb-admin-section-title">
+                    <i class="bi bi-clock-history me-1"></i>Recent Awards
+                  </div>
+                  <div class="table-responsive mt-2">
+                    <table class="history-table" id="lbPointsHistoryTable">
+                      <thead>
+                        <tr>
+                          <th>ID Number</th>
+                          <th>Student</th>
+                          <th>Points</th>
+                          <th>Reason</th>
+                          <th>Awarded At</th>
+                        </tr>
+                      </thead>
+                      <tbody id="lbPointsHistoryBody">
+                        <tr><td colspan="5" class="text-center text-muted py-3">No awards yet.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+    
+          <!-- TAB: Manage Tasks -->
+          <div id="lbAdminTabTasks" style="display:none; margin-top:1.25rem;">
+            <div class="history-card">
+              <div class="history-card-header">
+                <h4 class="history-title mb-0"><i class="bi bi-check2-square me-2"></i>Assign & Manage Tasks</h4>
+              </div>
+              <div class="p-4">
+                <div class="row g-3 mb-4">
+                  <div class="col-md-3">
+                    <label class="form-label fw-semibold">Student ID Number</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-person-badge"></i></span>
+                      <input type="text" class="form-control" id="lbTaskIdNumber" placeholder="Enter ID" />
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label fw-semibold">Task Title <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-card-text"></i></span>
+                      <input type="text" class="form-control" id="lbTaskTitle" placeholder="e.g. Build a CRUD app" />
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label fw-semibold">Description</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="bi bi-text-left"></i></span>
+                      <input type="text" class="form-control" id="lbTaskDesc" placeholder="Optional details…" />
+                    </div>
+                  </div>
+                  <div class="col-md-1">
+                    <label class="form-label fw-semibold">Points</label>
+                    <input type="number" class="form-control" id="lbTaskPoints"
+                          value="10" min="1" max="100"
+                          style="border-color:#d4b5ff;" />
+                  </div>
+                  <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-register w-100" onclick="assignTask()">
+                      <i class="bi bi-plus-lg me-1"></i>Assign
+                    </button>
+                  </div>
+                </div>
+                <div id="lbTaskMsg" class="form-text mb-3"></div>
+    
+                <div class="lb-admin-section-title mb-2">
+                  <i class="bi bi-list-task me-1"></i>All Tasks
+                  <button class="btn-res-refresh ms-auto" onclick="loadAdminTasks()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                  </button>
+                </div>
+                <div class="table-responsive">
+                  <table class="history-table" id="lbTasksTable">
+                    <thead>
+                      <tr>
+                        <th>Student</th>
+                        <th>ID Number</th>
+                        <th>Task</th>
+                        <th>Points</th>
+                        <th>Assigned</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="lbTasksBody">
+                      <tr><td colspan="7" class="text-center text-muted py-3">No tasks yet.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+    
+          <!-- TAB: View Rankings (admin copy) -->
+          <div id="lbAdminTabView" style="display:none; margin-top:1.25rem;">
+            <div class="history-card">
+              <div class="history-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <h4 class="history-title mb-0"><i class="bi bi-trophy me-2"></i>Current Rankings</h4>
+                <button class="btn-res-refresh" onclick="loadAdminLeaderboard()">
+                  <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                </button>
+              </div>
+              <div class="table-responsive">
+                <table class="history-table" id="lbAdminTable">
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Student</th>
+                      <th>Course</th>
+                      <th>Perf. Pts</th>
+                      <th>Hours</th>
+                      <th>Task Pts</th>
+                      <th>Sessions</th>
+                      <th>Final Score</th>
+                    </tr>
+                  </thead>
+                  <tbody id="lbAdminTableBody">
+                    <tr><td colspan="8" class="text-center text-muted py-3">Loading…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+    
+        </div>
+      </div>
+    </div>
+
     <!-- ===================== admin sit-in page ===================== -->
     <div id="page-sitin" class="page">
       <div class="history-page-wrapper">
         <div class="history-container" style="max-width:1200px;">
+
+          <!-- ── Sit-In Analytics Cards ── -->
+          <div class="sitin-analytics-grid mb-4">
+            <div class="sitin-analytics-card">
+              <div class="sitin-analytics-header">
+                <i class="bi bi-code-slash me-2"></i>Programming Language Usage
+              </div>
+              <div class="sitin-analytics-body">
+                <canvas id="sitinProgrammingChart" width="220" height="220"></canvas>
+                <div class="sitin-pie-legend" id="sitinProgrammingLegend"></div>
+              </div>
+            </div>
+            <div class="sitin-analytics-card">
+              <div class="sitin-analytics-header">
+                <i class="bi bi-building me-2"></i>Laboratory Usage
+              </div>
+              <div class="sitin-analytics-body">
+                <canvas id="sitinLabChart" width="220" height="220"></canvas>
+                <div class="sitin-pie-legend" id="sitinLabLegend"></div>
+              </div>
+            </div>
+          </div>
 
           <!-- ── Tab Nav ── -->
           <div class="sitin-tabs">
@@ -1563,9 +1873,21 @@
           <div class="history-card">
             <div class="history-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
               <h4 class="history-title mb-0"><i class="bi bi-calendar-check me-2"></i>Reservations</h4>
-              <button class="btn-res-refresh" onclick="loadAdminReservations()">
-                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
-              </button>
+              <div class="d-flex align-items-center gap-3">
+                <!-- Reservation toggle -->
+                <div class="res-toggle-wrap" id="resToggleWrap">
+                  <span class="res-toggle-label" id="resToggleLabel">
+                    <i class="bi bi-hourglass-split me-1"></i>Loading…
+                  </span>
+                  <label class="res-toggle-switch" title="Enable or disable student reservations">
+                    <input type="checkbox" id="resToggleInput" onchange="toggleReservations(this.checked)" />
+                    <span class="res-toggle-slider"></span>
+                  </label>
+                </div>
+                <button class="btn-res-refresh" onclick="loadAdminReservations()">
+                  <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                </button>
+              </div>
             </div>
             <div class="history-controls">
               <div class="sitin-filter-btns">

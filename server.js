@@ -134,6 +134,43 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS student_tasks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_number     TEXT NOT NULL,
+    sit_in_log_id INTEGER,
+    title         TEXT NOT NULL,
+    description   TEXT,
+    assigned_at   TEXT DEFAULT (datetime('now','localtime')),
+    completed     INTEGER DEFAULT 0,
+    completed_at  TEXT,
+    points        INTEGER DEFAULT 10,
+    FOREIGN KEY (sit_in_log_id) REFERENCES sit_in_logs(id)
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS performance_points (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_number   TEXT NOT NULL,
+    points      INTEGER NOT NULL DEFAULT 0,
+    reason      TEXT,
+    awarded_at  TEXT DEFAULT (datetime('now','localtime')),
+    awarded_by  TEXT DEFAULT 'admin'
+  )
+`);
+
+
+// ── settings table ──
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )
+`);
+// seed default: reservations enabled
+db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('reservations_enabled', '1')`).run();
+
 // seed default software
 const DEFAULT_SOFTWARE = {
   '524': ['Visual Studio', 'Visual Studio Code', 'Cisco Packet Tracer'],
@@ -502,6 +539,48 @@ app.delete('/api/admin/students/:idNumber', adminMiddleware, (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════
+// SETTINGS ROUTES
+// ═══════════════════════════════════════════════════
+
+// ── GET SETTINGS (public — students need to check reservation status) ──
+app.get('/api/settings', authMiddleware, (req, res) => {
+  const row = db.prepare(`SELECT value FROM settings WHERE key = 'reservations_enabled'`).get();
+  res.json({ success: true, reservationsEnabled: row ? row.value === '1' : true });
+});
+
+// ── ADMIN: GET SETTINGS ──
+app.get('/api/admin/settings', adminMiddleware, (req, res) => {
+  const row = db.prepare(`SELECT value FROM settings WHERE key = 'reservations_enabled'`).get();
+  res.json({ success: true, reservationsEnabled: row ? row.value === '1' : true });
+});
+
+// ── ADMIN: UPDATE SETTINGS ──
+app.put('/api/admin/settings', adminMiddleware, (req, res) => {
+  const { reservationsEnabled } = req.body;
+  if (typeof reservationsEnabled === 'undefined')
+    return res.json({ success: false, message: 'No setting provided.' });
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('reservations_enabled', ?)`)
+    .run(reservationsEnabled ? '1' : '0');
+
+  // notify all students when reservations are disabled
+  if (!reservationsEnabled) {
+    notifyAllStudents(
+      'announcement',
+      '🚫 Reservations Temporarily Disabled',
+      'Lab reservations have been temporarily disabled by the administrator. Please check back later.'
+    );
+  } else {
+    notifyAllStudents(
+      'announcement',
+      '✅ Reservations are Now Open',
+      'Lab reservations have been re-enabled. You may now reserve a PC.'
+    );
+  }
+
+  res.json({ success: true, reservationsEnabled });
+});
+
+// ═══════════════════════════════════════════════════
 // RESERVATION ROUTES
 // ═══════════════════════════════════════════════════
 
@@ -513,6 +592,11 @@ app.get('/api/reservations', authMiddleware, (req, res) => {
 
 // ── STUDENT: CREATE RESERVATION ──
 app.post('/api/reservations', authMiddleware, (req, res) => {
+  // Check if reservations are enabled
+  const settingRow = db.prepare(`SELECT value FROM settings WHERE key = 'reservations_enabled'`).get();
+  if (!settingRow || settingRow.value !== '1')
+    return res.json({ success: false, message: 'Reservations are currently disabled by the administrator.' });
+
   const { purpose, lab, timeIn, date, pcNumber } = req.body;
   const idNumber = req.user.idNumber;
 
@@ -723,7 +807,6 @@ app.delete('/api/admin/lab-software/:id', adminMiddleware, (req, res) => {
 });
 
 // ── ADMIN: IMPORT CSV (bulk replace or merge) ──
-// Body: { rows: [{lab, software}, ...], mode: 'merge'|'replace' }
 app.post('/api/admin/lab-software/import', adminMiddleware, (req, res) => {
   const { rows, mode } = req.body;
   if (!Array.isArray(rows) || rows.length === 0)
@@ -775,6 +858,172 @@ app.get('/api/admin/records', adminMiddleware, (req, res) => {
   query += ' ORDER BY date DESC, login_time DESC';
   const logs = db.prepare(query).all(...params);
   res.json({ success: true, logs });
+});
+
+// ── LEADERBOARD: Public (no auth) — top 20 ──
+app.get('/api/leaderboard', (req, res) => {
+  const students = db.prepare(`SELECT id_number, last_name, first_name, course, year_level FROM students`).all();
+ 
+  const results = students.map(s => {
+    // Total sit-in hours (from completed sessions)
+    const logs = db.prepare(`
+      SELECT login_time, logout_time FROM sit_in_logs
+      WHERE id_number = ? AND logout_time IS NOT NULL
+    `).all(s.id_number);
+ 
+    let totalMs = 0;
+    for (const log of logs) {
+      const login  = new Date(log.login_time.replace(' ', 'T'));
+      const logout = new Date(log.logout_time.replace(' ', 'T'));
+      if (!isNaN(login) && !isNaN(logout)) totalMs += logout - login;
+    }
+    const totalHours = totalMs / 3600000; // convert ms → hours
+ 
+    // Performance points
+    const perfRow = db.prepare(`
+      SELECT COALESCE(SUM(points), 0) as total FROM performance_points WHERE id_number = ?
+    `).get(s.id_number);
+    const perfPoints = perfRow ? perfRow.total : 0;
+ 
+    // Task completion (only tasks that are completed)
+    const taskRow = db.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done,
+        COALESCE(SUM(CASE WHEN completed = 1 THEN points ELSE 0 END), 0) as task_pts
+      FROM student_tasks WHERE id_number = ?
+    `).get(s.id_number);
+    const taskPoints  = taskRow ? taskRow.task_pts  : 0;
+    const tasksTotal  = taskRow ? taskRow.total     : 0;
+    const tasksDone   = taskRow ? taskRow.done      : 0;
+    const sessionCount = logs.length;
+ 
+    // Normalise for scoring (cap hours at 100 for scoring purposes)
+    const hoursScore = Math.min(totalHours, 100);
+ 
+    // Final weighted score
+    const finalScore = (perfPoints * 0.5) + (hoursScore * 0.3) + (taskPoints * 0.2);
+ 
+    return {
+      idNumber:     s.id_number,
+      firstName:    s.first_name,
+      lastName:     s.last_name,
+      course:       s.course,
+      yearLevel:    s.year_level,
+      perfPoints,
+      totalHours:   Math.round(totalHours * 10) / 10,
+      taskPoints,
+      tasksTotal,
+      tasksDone,
+      sessionCount,
+      finalScore:   Math.round(finalScore * 10) / 10,
+    };
+  });
+ 
+  results.sort((a, b) => b.finalScore - a.finalScore);
+  const top = results.slice(0, 20).map((r, i) => ({ ...r, rank: i + 1 }));
+ 
+  res.json({ success: true, leaderboard: top });
+});
+ 
+// ── ADMIN: Get all tasks ──
+app.get('/api/admin/tasks', adminMiddleware, (req, res) => {
+  const tasks = db.prepare(`
+    SELECT t.*, s.first_name, s.last_name
+    FROM student_tasks t
+    LEFT JOIN students s ON t.id_number = s.id_number
+    ORDER BY t.assigned_at DESC
+  `).all();
+  res.json({ success: true, tasks });
+});
+ 
+// ── ADMIN: Assign task to student ──
+app.post('/api/admin/tasks', adminMiddleware, (req, res) => {
+  const { idNumber, sitInLogId, title, description, points } = req.body;
+  if (!idNumber || !title) return res.json({ success: false, message: 'ID number and title are required.' });
+  const student = db.prepare('SELECT id FROM students WHERE id_number = ?').get(idNumber);
+  if (!student) return res.json({ success: false, message: 'Student not found.' });
+  db.prepare(`
+    INSERT INTO student_tasks (id_number, sit_in_log_id, title, description, points)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(idNumber, sitInLogId || null, title, description || '', points || 10);
+  res.json({ success: true });
+});
+ 
+// ── ADMIN: Mark task complete ──
+app.put('/api/admin/tasks/:id/complete', adminMiddleware, (req, res) => {
+  const task = db.prepare('SELECT * FROM student_tasks WHERE id = ?').get(req.params.id);
+  if (!task) return res.json({ success: false, message: 'Task not found.' });
+  db.prepare(`UPDATE student_tasks SET completed = 1, completed_at = datetime('now','localtime') WHERE id = ?`)
+    .run(req.params.id);
+  createNotification(
+    task.id_number,
+    'task_completed',
+    '✅ Task Marked Complete',
+    `Your task "${task.title}" has been marked as completed. +${task.points} task points awarded!`
+  );
+  res.json({ success: true });
+});
+ 
+// ── ADMIN: Delete task ──
+app.delete('/api/admin/tasks/:id', adminMiddleware, (req, res) => {
+  db.prepare('DELETE FROM student_tasks WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+ 
+// ── ADMIN: Award performance points ──
+app.post('/api/admin/performance-points', adminMiddleware, (req, res) => {
+  const { idNumber, points, reason } = req.body;
+  if (!idNumber || !points) return res.json({ success: false, message: 'ID number and points are required.' });
+  const student = db.prepare('SELECT id FROM students WHERE id_number = ?').get(idNumber);
+  if (!student) return res.json({ success: false, message: 'Student not found.' });
+  db.prepare(`INSERT INTO performance_points (id_number, points, reason) VALUES (?, ?, ?)`)
+    .run(idNumber, parseInt(points), reason || 'Admin award');
+  createNotification(
+    idNumber,
+    'points_awarded',
+    `🌟 +${points} Performance Points`,
+    reason || 'Points awarded by admin. Keep up the great work!'
+  );
+  res.json({ success: true });
+});
+
+// ── ADMIN: Get ALL performance points (for history table) ──
+app.get('/api/admin/performance-points/all', adminMiddleware, (req, res) => {
+  const rows = db.prepare(`
+    SELECT p.*, s.first_name, s.last_name
+    FROM performance_points p
+    LEFT JOIN students s ON p.id_number = s.id_number
+    ORDER BY p.awarded_at DESC
+    LIMIT 100
+  `).all();
+  res.json({ success: true, rows });
+});
+ 
+// ── ADMIN: Get performance points for a student ──
+app.get('/api/admin/performance-points/:idNumber', adminMiddleware, (req, res) => {
+  const rows = db.prepare(`
+    SELECT * FROM performance_points WHERE id_number = ? ORDER BY awarded_at DESC
+  `).all(req.params.idNumber);
+  const total = rows.reduce((sum, r) => sum + r.points, 0);
+  res.json({ success: true, rows, total });
+});
+ 
+// ── STUDENT: Get own tasks ──
+app.get('/api/tasks', authMiddleware, (req, res) => {
+  const tasks = db.prepare(`
+    SELECT * FROM student_tasks WHERE id_number = ? ORDER BY assigned_at DESC
+  `).all(req.user.idNumber);
+  res.json({ success: true, tasks });
+});
+ 
+// ── STUDENT: Get own performance points ──
+app.get('/api/performance-points', authMiddleware, (req, res) => {
+  const rows = db.prepare(`
+    SELECT * FROM performance_points WHERE id_number = ? ORDER BY awarded_at DESC
+  `).all(req.user.idNumber);
+  const total = rows.reduce((sum, r) => sum + r.points, 0);
+  res.json({ success: true, rows, total });
 });
 
 app.listen(3000, () => console.log('Server running at http://localhost:3000'));
