@@ -133,9 +133,9 @@
               <li class="nav-item" id="navAdminLeaderboard" style="display:none;">
                 <a class="nav-link nav-pill" href="#"
                   onclick="showPage('adminleaderboard'); setAdminNav('adminleaderboard'); return false;">
-                  <i class="bi bi-trophy me-1"></i>Leaderboard
+                  <i class="bi bi-trophy-fill me-1"></i>Rankings
                 </a>
-              </li>              
+              </li>            
               </li>
               <li class="nav-item" id="navAdminLogout" style="display:none;">
                 <a class="nav-link nav-pill" href="#" onclick="adminLogout(); return false;">Logout</a>
@@ -727,13 +727,13 @@
               <table class="history-table" id="sessionsTable">
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Time In</th>
-                    <th>Time Out</th>
-                    <th>Duration</th>
-                    <th>PC No.</th>
-                    <th>Lab</th>
-                    <th>Status</th>
+                    <th onclick="sortSessions('date')">Date <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortSessions('login_time')">Time In <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortSessions('logout_time')">Time Out <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortSessions('duration')">Duration <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortSessions('pc_number')">PC No. <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortSessions('lab')">Lab <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortSessions('status')">Status <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                   </tr>
                 </thead>
                 <tbody id="sessionsTableBody">
@@ -1032,14 +1032,14 @@
               <table class="lb-table" id="leaderboardTable">
                 <thead>
                   <tr>
-                    <th>Rank</th>
-                    <th>Student</th>
-                    <th>Course</th>
-                    <th title="Performance Points × 0.5">Perf. Pts</th>
-                    <th title="Sit-In Hours × 0.3">Hours</th>
-                    <th title="Task Points × 0.2">Task Pts</th>
-                    <th>Sessions</th>
-                    <th>Final Score</th>
+                    <th onclick="sortLeaderboard('rank')">Rank <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortLeaderboard('name')">Student <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortLeaderboard('course')">Course <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortLeaderboard('perfPoints')" title="Performance Points × 0.5">Perf. Pts <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortLeaderboard('totalHours')" title="Sit-In Hours × 0.3">Hours <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortLeaderboard('taskPoints')" title="Task Points × 0.2">Task Pts <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortLeaderboard('sessionCount')">Sessions <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                    <th onclick="sortLeaderboard('finalScore')">Final Score <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                   </tr>
                 </thead>
                 <tbody id="leaderboardTableBody">
@@ -1126,11 +1126,11 @@
                     <table class="history-table" id="lbPointsHistoryTable">
                       <thead>
                         <tr>
-                          <th>ID Number</th>
-                          <th>Student</th>
-                          <th>Points</th>
-                          <th>Reason</th>
-                          <th>Awarded At</th>
+                          <th onclick="sortLbPoints('id_number')">ID Number <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                          <th onclick="sortLbPoints('name')">Student <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                          <th onclick="sortLbPoints('points')">Points <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                          <th onclick="sortLbPoints('reason')">Reason <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                          <th onclick="sortLbPoints('awarded_at')">Awarded At <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                         </tr>
                       </thead>
                       <tbody id="lbPointsHistoryBody">
@@ -1196,12 +1196,12 @@
                   <table class="history-table" id="lbTasksTable">
                     <thead>
                       <tr>
-                        <th>Student</th>
-                        <th>ID Number</th>
-                        <th>Task</th>
-                        <th>Points</th>
-                        <th>Assigned</th>
-                        <th>Status</th>
+                        <th onclick="sortLbTasks('name')">Student <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                        <th onclick="sortLbTasks('id_number')">ID Number <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                        <th onclick="sortLbTasks('title')">Task <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                        <th onclick="sortLbTasks('points')">Points <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                        <th onclick="sortLbTasks('assigned_at')">Assigned <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                        <th onclick="sortLbTasks('status')">Status <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -1227,14 +1227,14 @@
                 <table class="history-table" id="lbAdminTable">
                   <thead>
                     <tr>
-                      <th>Rank</th>
-                      <th>Student</th>
-                      <th>Course</th>
-                      <th>Perf. Pts</th>
-                      <th>Hours</th>
-                      <th>Task Pts</th>
-                      <th>Sessions</th>
-                      <th>Final Score</th>
+                      <th onclick="sortLbAdminRank('rank')">Rank <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortLbAdminRank('name')">Student <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortLbAdminRank('course')">Course <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortLbAdminRank('perfPoints')">Perf. Pts <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortLbAdminRank('totalHours')">Hours <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortLbAdminRank('taskPoints')">Task Pts <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortLbAdminRank('sessionCount')">Sessions <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
+                      <th onclick="sortLbAdminRank('finalScore')">Final Score <span class="sort-btns"><i class="bi bi-caret-up-fill"></i><i class="bi bi-caret-down-fill"></i></span></th>
                     </tr>
                   </thead>
                   <tbody id="lbAdminTableBody">

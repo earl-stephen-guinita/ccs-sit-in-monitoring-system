@@ -1073,24 +1073,62 @@ function _parseSQLiteDateTime(str) {
 }
 
 /* ── render sessions table + summary ── */
+/* ── sessions table sort state ── */
+let sessionsSortKey = 'login_time';
+let sessionsSortDir = 'desc';
+
+function sortSessions(key) {
+  if (sessionsSortKey === key) {
+    sessionsSortDir = sessionsSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sessionsSortKey = key;
+    sessionsSortDir = 'asc';
+  }
+  if (_lastSessionsData) renderSessionsAndSummary(_lastSessionsData);
+}
+
+let _lastSessionsData = null;
+
 function renderSessionsAndSummary(logs) {
+  _lastSessionsData = logs;
   _stopLiveDuration();
 
   const tbody = document.getElementById('sessionsTableBody');
   if (!logs || logs.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No sessions yet.</td></tr>';
-    document.getElementById('summaryTotalHours').textContent   = '0h 0m';
-    document.getElementById('summaryNumSessions').textContent  = '0';
-    document.getElementById('summaryAvgDuration').textContent  = '—';
-    document.getElementById('summaryLongest').textContent      = '—';
+    document.getElementById('summaryTotalHours').textContent  = '0h 0m';
+    document.getElementById('summaryNumSessions').textContent = '0';
+    document.getElementById('summaryAvgDuration').textContent = '—';
+    document.getElementById('summaryLongest').textContent     = '—';
     return;
   }
 
-  // sort newest first
+  /* ── sort ── */
   const sorted = [...logs].sort((a, b) => {
-    const da = _parseSQLiteDateTime(a.login_time) || 0;
-    const db2 = _parseSQLiteDateTime(b.login_time) || 0;
-    return db2 - da;
+    let valA, valB;
+    if (sessionsSortKey === 'duration') {
+      const now = new Date();
+      const msA = (() => { const l = _parseSQLiteDateTime(a.login_time); const o = _parseSQLiteDateTime(a.logout_time); return l ? (o ? o - l : now - l) : 0; })();
+      const msB = (() => { const l = _parseSQLiteDateTime(b.login_time); const o = _parseSQLiteDateTime(b.logout_time); return l ? (o ? o - l : now - l) : 0; })();
+      return sessionsSortDir === 'asc' ? msA - msB : msB - msA;
+    } else if (sessionsSortKey === 'status') {
+      valA = a.logout_time ? 'done' : 'active';
+      valB = b.logout_time ? 'done' : 'active';
+    } else {
+      valA = a[sessionsSortKey] || '';
+      valB = b[sessionsSortKey] || '';
+    }
+    if (valA < valB) return sessionsSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return sessionsSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  /* ── update sort icons ── */
+  document.querySelectorAll('#sessionsTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#sessionsTable th');
+  const keys = ['date', 'login_time', 'logout_time', 'duration', 'pc_number', 'lab', 'status'];
+  keys.forEach((k, i) => {
+    if (k === sessionsSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active');
   });
 
   function buildRows() {
@@ -1099,32 +1137,25 @@ function renderSessionsAndSummary(logs) {
       const loginDt  = _parseSQLiteDateTime(r.login_time);
       const logoutDt = _parseSQLiteDateTime(r.logout_time);
       const isActive = !r.logout_time;
-
       let durationStr, statusHtml;
       if (isActive) {
         const ms = loginDt ? now - loginDt : 0;
-        durationStr = `<span class="duration-live" data-login="${r.login_time}">` +
-                      _msToHMS(ms) + `</span>`;
+        durationStr = `<span class="duration-live" data-login="${r.login_time}">${_msToHMS(ms)}</span>`;
         statusHtml  = '<span class="sitin-status active">Active</span>';
       } else {
         const ms = (loginDt && logoutDt) ? logoutDt - loginDt : 0;
         durationStr = _msToHMShort(ms);
         statusHtml  = '<span class="sitin-status done">Done</span>';
       }
-
       const timeIn  = loginDt  ? loginDt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—';
       const timeOut = logoutDt ? logoutDt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—';
-      const dateFmt = r.date || '—';
-      const pcNo    = r.pc_number ? 'PC ' + r.pc_number : '—';
-      const lab     = r.lab || '—';
-
       return `<tr>
-        <td>${dateFmt}</td>
+        <td>${r.date || '—'}</td>
         <td>${timeIn}</td>
         <td>${timeOut}</td>
         <td>${durationStr}</td>
-        <td>${pcNo}</td>
-        <td>${lab}</td>
+        <td>${r.pc_number ? 'PC ' + r.pc_number : '—'}</td>
+        <td>${r.lab || '—'}</td>
         <td>${statusHtml}</td>
       </tr>`;
     }).join('');
@@ -1132,7 +1163,6 @@ function renderSessionsAndSummary(logs) {
 
   buildRows();
 
-  // tick live durations every second
   const hasActive = sorted.some(r => !r.logout_time);
   if (hasActive) {
     _liveDurationTimer = setInterval(() => {
@@ -1144,29 +1174,22 @@ function renderSessionsAndSummary(logs) {
     }, 1000);
   }
 
-  // ── compute summary ──
-  let totalMs   = 0;
-  let longestMs = 0;
-  let counted   = 0;
+  /* ── summary ── */
+  let totalMs = 0, longestMs = 0, counted = 0;
   const now = new Date();
-
-  sorted.forEach(r => {
+  logs.forEach(r => {
     const loginDt  = _parseSQLiteDateTime(r.login_time);
     const logoutDt = _parseSQLiteDateTime(r.logout_time);
-    const ms = loginDt
-      ? (logoutDt ? logoutDt - loginDt : now - loginDt)
-      : 0;
+    const ms = loginDt ? (logoutDt ? logoutDt - loginDt : now - loginDt) : 0;
     totalMs += ms;
     if (ms > longestMs) longestMs = ms;
     counted++;
   });
-
   const avgMs = counted > 0 ? totalMs / counted : 0;
-
-  document.getElementById('summaryTotalHours').textContent   = _msToHMShort(totalMs);
-  document.getElementById('summaryNumSessions').textContent  = counted;
-  document.getElementById('summaryAvgDuration').textContent  = counted > 0 ? _msToHMShort(avgMs) : '—';
-  document.getElementById('summaryLongest').textContent      = longestMs > 0 ? _msToHMShort(longestMs) : '—';
+  document.getElementById('summaryTotalHours').textContent  = _msToHMShort(totalMs);
+  document.getElementById('summaryNumSessions').textContent = counted;
+  document.getElementById('summaryAvgDuration').textContent = counted > 0 ? _msToHMShort(avgMs) : '—';
+  document.getElementById('summaryLongest').textContent     = longestMs > 0 ? _msToHMShort(longestMs) : '—';
 }
 
 /* ── load history ── */
@@ -2839,7 +2862,80 @@ function exportAdminSoftwareCSV() {
     .catch(() => alert('Could not export CSV.'));
 }
 
-function importSoftwareCSV(event) {
+function exportAdminSoftwareExcel() {
+  const software = adminSoftwareData;
+  const labs = ['524', '526', '528', '530', '542', '544'];
+  let html = '<table><thead><tr><th>Laboratory</th><th>Software</th></tr></thead><tbody>';
+  for (const lab of labs) {
+    const entries = software[lab] || [];
+    for (const e of entries) {
+      html += `<tr><td>Lab ${lab}</td><td>${e.software}</td></tr>`;
+    }
+  }
+  html += '</tbody></table>';
+  const blob = new Blob(
+    [`<html><head><meta charset="UTF-8"></head><body>${html}</body></html>`],
+    { type: 'application/vnd.ms-excel' }
+  );
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href     = url;
+  a.download = 'lab-software.xls';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportAdminSoftwarePDF() {
+  const software = adminSoftwareData;
+  const labs = ['524', '526', '528', '530', '542', '544'];
+  let tableRows = '';
+  for (const lab of labs) {
+    const entries = software[lab] || [];
+    if (entries.length === 0) {
+      tableRows += `<tr><td>Lab ${lab}</td><td><em>No software listed</em></td></tr>`;
+    } else {
+      for (const e of entries) {
+        tableRows += `<tr><td>Lab ${lab}</td><td>${e.software}</td></tr>`;
+      }
+    }
+  }
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Lab Software — CCS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; padding: 1.5rem 2rem; color: #1a1a2e; font-size: 12px; }
+    .print-header { text-align: center; margin-bottom: 1.2rem; border-bottom: 2px solid #2d0f5e; padding-bottom: 0.8rem; }
+    .print-header h2 { font-size: 1.1rem; color: #2d0f5e; font-weight: 800; }
+    .print-header p  { font-size: 0.78rem; color: #666; margin-top: 0.2rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    thead tr { background: #2d0f5e; color: #fff; }
+    th { padding: 0.5rem 0.6rem; text-align: left; font-weight: 700; }
+    td { padding: 0.42rem 0.6rem; border-bottom: 1px solid #e8d8ff; vertical-align: top; }
+    tbody tr:nth-child(even) { background: #f8f4ff; }
+    .print-footer { margin-top: 0.85rem; font-size: 0.72rem; color: #aaa; text-align: right; }
+    @media print { body { padding: 0.5rem 1rem; } }
+  </style>
+</head>
+<body>
+  <div class="print-header">
+    <h2>College of Computer Studies — Lab Software</h2>
+    <p>University of Cebu &nbsp;|&nbsp; CCS Sit-In Monitoring System &nbsp;|&nbsp; Generated: ${new Date().toLocaleString()}</p>
+  </div>
+  <table>
+    <thead><tr><th>Laboratory</th><th>Software</th></tr></thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+  <div class="print-footer">CCS Sit-In Monitoring System &mdash; ${new Date().toLocaleDateString()}</div>
+  <script>window.onload = function() { window.print(); };<\/script>
+</body>
+</html>`);
+  win.document.close();
+}
+
+function importSoftwareFile(event) {
   const file = event.target.files[0];
   if (!file) return;
 
@@ -2882,9 +2978,8 @@ function importSoftwareCSV(event) {
       .then(result => {
         event.target.value = '';
         if (result.success) {
-          adminSoftwareData = result.software;
-          renderAdminSoftwareTable(result.software);
           alert(`✓ Imported ${rows.length} software entries successfully.`);
+          loadAdminSoftware(); // re-fetch from server so the table reflects DB state
         } else {
           alert(result.message || 'Import failed.');
         }
@@ -3677,32 +3772,49 @@ function loadLeaderboard() {
     .catch(() => {});
 }
 
+/* ── leaderboard sort state ── */
+let lbSortKey = 'finalScore';
+let lbSortDir = 'desc';
+
+function sortLeaderboard(key) {
+  if (lbSortKey === key) {
+    lbSortDir = lbSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    lbSortKey = key;
+    lbSortDir = 'desc';
+  }
+  if (_lastLeaderboardData) renderLeaderboard(_lastLeaderboardData);
+}
+
+let _lastLeaderboardData = null;
+
 function renderLeaderboard(data) {
-  /* ── podium (top 3) ── */
+  _lastLeaderboardData = data;
+
+  /* ── podium (top 3) — always by finalScore desc ── */
   const podiumEl = document.getElementById('lbPodium');
   if (podiumEl) {
     if (data.length === 0) {
       podiumEl.innerHTML = '<p class="lb-empty">No data yet. Rankings will appear once students complete sessions.</p>';
     } else {
+      const byScore = [...data].sort((a, b) => b.finalScore - a.finalScore);
       const medals  = ['🥇', '🥈', '🥉'];
       const heights = ['lb-podium-1st', 'lb-podium-2nd', 'lb-podium-3rd'];
-      // podium order: 2nd, 1st, 3rd
-      const order = [1, 0, 2].filter(i => i < data.length);
-
+      const order   = [1, 0, 2].filter(i => i < byScore.length);
       podiumEl.innerHTML = `
         <div class="lb-podium-stage">
           ${order.map(i => {
-            const s = data[i];
+            const s = byScore[i];
             const initials = (s.firstName[0] + s.lastName[0]).toUpperCase();
             return `
-              <div class="lb-podium-slot ${heights[s.rank - 1] || ''}">
+              <div class="lb-podium-slot ${heights[i] || ''}">
                 <div class="lb-podium-avatar">${initials}</div>
-                <div class="lb-podium-medal">${medals[s.rank - 1] || ''}</div>
+                <div class="lb-podium-medal">${medals[i] || ''}</div>
                 <div class="lb-podium-name">${s.firstName} ${s.lastName}</div>
                 <div class="lb-podium-course">${s.course}</div>
                 <div class="lb-podium-score">${s.finalScore} pts</div>
-                <div class="lb-podium-block rank-${s.rank}">
-                  <span class="lb-podium-rank">#${s.rank}</span>
+                <div class="lb-podium-block rank-${i + 1}">
+                  <span class="lb-podium-rank">#${i + 1}</span>
                 </div>
               </div>`;
           }).join('')}
@@ -3710,37 +3822,58 @@ function renderLeaderboard(data) {
     }
   }
 
+  /* ── sort the table data ── */
+  const sorted = [...data].sort((a, b) => {
+    let valA, valB;
+    if (lbSortKey === 'name') {
+      valA = a.lastName + ' ' + a.firstName;
+      valB = b.lastName + ' ' + b.firstName;
+    } else {
+      valA = a[lbSortKey] ?? 0;
+      valB = b[lbSortKey] ?? 0;
+    }
+    if (valA < valB) return lbSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return lbSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  /* ── update sort icons ── */
+  document.querySelectorAll('#leaderboardTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#leaderboardTable th');
+  const keys = ['rank', 'name', 'course', 'perfPoints', 'totalHours', 'taskPoints', 'sessionCount', 'finalScore'];
+  keys.forEach((k, i) => {
+    if (k === lbSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active');
+  });
+
   /* ── full table ── */
   const tbody = document.getElementById('leaderboardTableBody');
   if (!tbody) return;
 
-  if (data.length === 0) {
+  if (sorted.length === 0) {
     tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No rankings yet.</td></tr>';
     return;
   }
 
   const rankIcons = ['🥇', '🥈', '🥉'];
 
-  tbody.innerHTML = data.map(s => {
-    const rankDisplay = s.rank <= 3
-      ? `<span class="lb-rank-medal">${rankIcons[s.rank - 1]} ${s.rank}</span>`
-      : `<span class="lb-rank-num">#${s.rank}</span>`;
+  tbody.innerHTML = sorted.map(s => {
+    const byScoreRank = [...data].sort((a, b) => b.finalScore - a.finalScore)
+      .findIndex(r => r.idNumber === s.idNumber) + 1;
+    const rankDisplay = byScoreRank <= 3
+      ? `<span class="lb-rank-medal">${rankIcons[byScoreRank - 1]} ${byScoreRank}</span>`
+      : `<span class="lb-rank-num">#${byScoreRank}</span>`;
 
-    const barPerf = Math.min(100, s.perfPoints);
+    const barPerf  = Math.min(100, s.perfPoints);
     const barHours = Math.min(100, (s.totalHours / 100) * 100);
     const barTask  = Math.min(100, s.taskPoints);
-
-    const taskRatio = s.tasksTotal > 0
-      ? `${s.tasksDone}/${s.tasksTotal} done`
-      : '—';
-
-    const scoreClass = s.rank === 1 ? 'lb-score-gold'
-      : s.rank === 2 ? 'lb-score-silver'
-      : s.rank === 3 ? 'lb-score-bronze'
+    const taskRatio = s.tasksTotal > 0 ? `${s.tasksDone}/${s.tasksTotal} done` : '—';
+    const scoreClass = byScoreRank === 1 ? 'lb-score-gold'
+      : byScoreRank === 2 ? 'lb-score-silver'
+      : byScoreRank === 3 ? 'lb-score-bronze'
       : 'lb-score-normal';
 
     return `
-      <tr class="${s.rank <= 3 ? 'lb-top-row' : ''}">
+      <tr class="${byScoreRank <= 3 ? 'lb-top-row' : ''}">
         <td>${rankDisplay}</td>
         <td>
           <div class="lb-student-cell">
@@ -3849,14 +3982,43 @@ function _fetchAllPointsHistory() {
     .catch(() => {});
 }
 
+/* ── admin points history sort state ── */
+let lbPointsSortKey = 'awarded_at';
+let lbPointsSortDir = 'desc';
+let _lastPointsData = null;
+
+function sortLbPoints(key) {
+  if (lbPointsSortKey === key) lbPointsSortDir = lbPointsSortDir === 'asc' ? 'desc' : 'asc';
+  else { lbPointsSortKey = key; lbPointsSortDir = 'asc'; }
+  if (_lastPointsData) renderAdminPointsHistory(_lastPointsData);
+}
+
 function renderAdminPointsHistory(rows) {
+  _lastPointsData = rows;
   const tbody = document.getElementById('lbPointsHistoryBody');
   if (!tbody) return;
   if (!rows || rows.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No awards yet.</td></tr>';
     return;
   }
-  tbody.innerHTML = rows.slice(0, 50).map(r => `
+
+  const sorted = [...rows].sort((a, b) => {
+    let valA = a[lbPointsSortKey] ?? '';
+    let valB = b[lbPointsSortKey] ?? '';
+    if (lbPointsSortKey === 'name') { valA = (a.first_name||'') + ' ' + (a.last_name||''); valB = (b.first_name||'') + ' ' + (b.last_name||''); }
+    if (lbPointsSortKey === 'points') return lbPointsSortDir === 'asc' ? a.points - b.points : b.points - a.points;
+    if (valA < valB) return lbPointsSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return lbPointsSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  /* update sort icons */
+  document.querySelectorAll('#lbPointsHistoryTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#lbPointsHistoryTable th');
+  const keys = ['id_number', 'name', 'points', 'reason', 'awarded_at'];
+  keys.forEach((k, i) => { if (k === lbPointsSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active'); });
+
+  tbody.innerHTML = sorted.slice(0, 50).map(r => `
     <tr>
       <td>${r.id_number}</td>
       <td>${r.first_name ? r.first_name + ' ' + r.last_name : '—'}</td>
@@ -3867,61 +4029,44 @@ function renderAdminPointsHistory(rows) {
   `).join('');
 }
 
-/* ── Assign task ── */
-function assignTask() {
-  const idNumber = document.getElementById('lbTaskIdNumber').value.trim();
-  const title    = document.getElementById('lbTaskTitle').value.trim();
-  const desc     = document.getElementById('lbTaskDesc').value.trim();
-  const points   = document.getElementById('lbTaskPoints').value;
-  const msgEl    = document.getElementById('lbTaskMsg');
-  const token    = localStorage.getItem('ccs_admin_token');
+/* ── admin tasks sort state ── */
+let lbTasksSortKey = 'assigned_at';
+let lbTasksSortDir = 'desc';
+let _lastTasksData = null;
 
-  if (!idNumber || !title) {
-    msgEl.style.color = '#dc3545';
-    msgEl.textContent = '✗ Student ID and task title are required.';
-    return;
-  }
-
-  fetch('/api/admin/tasks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-    body: JSON.stringify({ idNumber, title, description: desc, points: parseInt(points) || 10 }),
-  })
-    .then(res => res.json())
-    .then(result => {
-      if (result.success) {
-        msgEl.style.color = '#198754';
-        msgEl.textContent = `✓ Task assigned to ${idNumber}!`;
-        document.getElementById('lbTaskIdNumber').value = '';
-        document.getElementById('lbTaskTitle').value    = '';
-        document.getElementById('lbTaskDesc').value     = '';
-        document.getElementById('lbTaskPoints').value   = '10';
-        loadAdminTasks();
-      } else {
-        msgEl.style.color = '#dc3545';
-        msgEl.textContent = '✗ ' + (result.message || 'Failed.');
-      }
-    })
-    .catch(() => { msgEl.style.color = '#dc3545'; msgEl.textContent = '✗ Server error.'; });
-}
-
-/* ── Load all tasks (admin) ── */
-function loadAdminTasks() {
-  const token = localStorage.getItem('ccs_admin_token');
-  fetch('/api/admin/tasks', { headers: { 'Authorization': 'Bearer ' + token } })
-    .then(res => res.json())
-    .then(result => renderAdminTasks(result.tasks || []))
-    .catch(() => {});
+function sortLbTasks(key) {
+  if (lbTasksSortKey === key) lbTasksSortDir = lbTasksSortDir === 'asc' ? 'desc' : 'asc';
+  else { lbTasksSortKey = key; lbTasksSortDir = 'asc'; }
+  if (_lastTasksData) renderAdminTasks(_lastTasksData);
 }
 
 function renderAdminTasks(tasks) {
+  _lastTasksData = tasks;
   const tbody = document.getElementById('lbTasksBody');
   if (!tbody) return;
-  if (tasks.length === 0) {
+  if (!tasks || tasks.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No tasks yet.</td></tr>';
     return;
   }
-  tbody.innerHTML = tasks.map(t => `
+
+  const sorted = [...tasks].sort((a, b) => {
+    let valA, valB;
+    if (lbTasksSortKey === 'name') { valA = (a.first_name||'') + ' ' + (a.last_name||''); valB = (b.first_name||'') + ' ' + (b.last_name||''); }
+    else if (lbTasksSortKey === 'points') return lbTasksSortDir === 'asc' ? a.points - b.points : b.points - a.points;
+    else if (lbTasksSortKey === 'status') { valA = a.completed ? 'done' : 'pending'; valB = b.completed ? 'done' : 'pending'; }
+    else { valA = String(a[lbTasksSortKey] ?? ''); valB = String(b[lbTasksSortKey] ?? ''); }
+    if (valA < valB) return lbTasksSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return lbTasksSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  /* update sort icons */
+  document.querySelectorAll('#lbTasksTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#lbTasksTable th');
+  const keys = ['name', 'id_number', 'title', 'points', 'assigned_at', 'status'];
+  keys.forEach((k, i) => { if (k === lbTasksSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active'); });
+
+  tbody.innerHTML = sorted.map(t => `
     <tr>
       <td>${t.first_name ? t.first_name + ' ' + t.last_name : '—'}</td>
       <td>${t.id_number}</td>
@@ -3931,81 +4076,73 @@ function renderAdminTasks(tasks) {
       </td>
       <td><span class="lb-pts-badge">+${t.points}</span></td>
       <td style="font-size:0.78rem;">${(t.assigned_at || '').slice(0, 16)}</td>
-      <td>
-        ${t.completed
-          ? `<span class="sitin-status done">✓ Done</span>`
-          : `<span class="sitin-status active">Pending</span>`}
-      </td>
+      <td>${t.completed ? `<span class="sitin-status done">✓ Done</span>` : `<span class="sitin-status active">Pending</span>`}</td>
       <td>
         <div class="d-flex gap-1">
-          ${!t.completed ? `
-            <button class="btn-student-edit" onclick="markTaskComplete(${t.id})">
-              <i class="bi bi-check-lg me-1"></i>Complete
-            </button>` : ''}
-          <button class="btn-student-delete" onclick="deleteTask(${t.id})">
-            <i class="bi bi-trash-fill me-1"></i>Delete
-          </button>
+          ${!t.completed ? `<button class="btn-student-edit" onclick="markTaskComplete(${t.id})"><i class="bi bi-check-lg me-1"></i>Complete</button>` : ''}
+          <button class="btn-student-delete" onclick="deleteTask(${t.id})"><i class="bi bi-trash-fill me-1"></i>Delete</button>
         </div>
       </td>
     </tr>
   `).join('');
 }
 
-/* ── Mark task complete ── */
-function markTaskComplete(id) {
-  if (!confirm('Mark this task as completed and award points to the student?')) return;
-  const token = localStorage.getItem('ccs_admin_token');
-  fetch(`/api/admin/tasks/${id}/complete`, {
-    method: 'PUT',
-    headers: { 'Authorization': 'Bearer ' + token }
-  })
-    .then(res => res.json())
-    .then(result => {
-      if (result.success) loadAdminTasks();
-      else alert(result.message || 'Failed.');
-    })
-    .catch(() => alert('Server error.'));
+/* ── admin rankings sort state ── */
+let lbAdminRankSortKey = 'finalScore';
+let lbAdminRankSortDir = 'desc';
+let _lastAdminRankData = null;
+
+function sortLbAdminRank(key) {
+  if (lbAdminRankSortKey === key) lbAdminRankSortDir = lbAdminRankSortDir === 'asc' ? 'desc' : 'asc';
+  else { lbAdminRankSortKey = key; lbAdminRankSortDir = 'asc'; }
+  if (_lastAdminRankData) _renderAdminRankTable(_lastAdminRankData);
 }
 
-/* ── Delete task ── */
-function deleteTask(id) {
-  if (!confirm('Delete this task?')) return;
-  const token = localStorage.getItem('ccs_admin_token');
-  fetch(`/api/admin/tasks/${id}`, {
-    method: 'DELETE',
-    headers: { 'Authorization': 'Bearer ' + token }
-  })
-    .then(res => res.json())
-    .then(result => { if (result.success) loadAdminTasks(); })
-    .catch(() => {});
+function _renderAdminRankTable(data) {
+  _lastAdminRankData = data;
+  const tbody = document.getElementById('lbAdminTableBody');
+  if (!tbody) return;
+  if (!data || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No data yet.</td></tr>';
+    return;
+  }
+
+  const sorted = [...data].sort((a, b) => {
+    let valA, valB;
+    if (lbAdminRankSortKey === 'name') { valA = a.lastName + ' ' + a.firstName; valB = b.lastName + ' ' + b.firstName; }
+    else { valA = a[lbAdminRankSortKey] ?? 0; valB = b[lbAdminRankSortKey] ?? 0; }
+    if (typeof valA === 'number') return lbAdminRankSortDir === 'asc' ? valA - valB : valB - valA;
+    if (valA < valB) return lbAdminRankSortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return lbAdminRankSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  /* update sort icons */
+  document.querySelectorAll('#lbAdminTable .sort-btns').forEach(el => el.classList.remove('active'));
+  const ths  = document.querySelectorAll('#lbAdminTable th');
+  const keys = ['rank', 'name', 'course', 'perfPoints', 'totalHours', 'taskPoints', 'sessionCount', 'finalScore'];
+  keys.forEach((k, i) => { if (k === lbAdminRankSortKey && ths[i]) ths[i].querySelector('.sort-btns')?.classList.add('active'); });
+
+  const medals = ['🥇', '🥈', '🥉'];
+  tbody.innerHTML = sorted.map(s => {
+    const origRank = data.sort((a,b) => b.finalScore - a.finalScore).findIndex(r => r.idNumber === s.idNumber) + 1;
+    return `<tr>
+      <td>${origRank <= 3 ? medals[origRank-1] + ' ' : ''}#${origRank}</td>
+      <td>${s.firstName} ${s.lastName}</td>
+      <td>${s.course}</td>
+      <td>${s.perfPoints}</td>
+      <td>${s.totalHours}h</td>
+      <td>${s.taskPoints}</td>
+      <td>${s.sessionCount}</td>
+      <td><strong>${s.finalScore}</strong></td>
+    </tr>`;
+  }).join('');
 }
 
-/* ── Admin: view leaderboard ── */
 function loadAdminLeaderboard() {
   fetch('/api/leaderboard')
     .then(res => res.json())
-    .then(result => {
-      const tbody = document.getElementById('lbAdminTableBody');
-      if (!tbody) return;
-      const data = result.leaderboard || [];
-      if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No data yet.</td></tr>';
-        return;
-      }
-      const medals = ['🥇', '🥈', '🥉'];
-      tbody.innerHTML = data.map(s => `
-        <tr>
-          <td>${s.rank <= 3 ? medals[s.rank-1] + ' ' : ''}#${s.rank}</td>
-          <td>${s.firstName} ${s.lastName}</td>
-          <td>${s.course}</td>
-          <td>${s.perfPoints}</td>
-          <td>${s.totalHours}h</td>
-          <td>${s.taskPoints}</td>
-          <td>${s.sessionCount}</td>
-          <td><strong>${s.finalScore}</strong></td>
-        </tr>
-      `).join('');
-    })
+    .then(result => _renderAdminRankTable(result.leaderboard || []))
     .catch(() => {});
 }
 
