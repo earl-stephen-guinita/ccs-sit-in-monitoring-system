@@ -91,7 +91,7 @@ const PAGE_TITLES = {
   profile:           'CCS | Profile',
   admin:             'CCS | Admin Panel',
   history:           'CCS | History',
-  sitin:             'CCS | Current Sit-In',
+  sitin:             'CCS | Sit-In',
   students:          'CCS | Students',
   adminreservations: 'CCS | Reservations',
   adminfeedback:     'CCS | Feedback Reports',
@@ -558,27 +558,22 @@ function searchStudent() {
         const hintTextEl = document.getElementById('sitResHintText');
  
         if (res) {
-          // pre-fill from the approved reservation
           const purposeSelect = document.getElementById('sitPurpose');
           const labSelect     = document.getElementById('sitLab');
           const pcInput       = document.getElementById('sitPcNumber');
- 
-          // set purpose if option exists
+
           for (const opt of purposeSelect.options) {
             if (opt.value === res.purpose) { opt.selected = true; break; }
           }
-          // set lab if option exists
           for (const opt of labSelect.options) {
             if (opt.value === res.lab) { opt.selected = true; break; }
           }
           if (res.pc_number) pcInput.value = res.pc_number;
- 
+
           hintTextEl.textContent =
             `✅ Auto-filled from approved reservation — Lab ${res.lab}, ${res.purpose}` +
             (res.pc_number ? `, PC ${res.pc_number}` : '') +
             ` at ${res.time_in}.`;
-          hintEl.style.display = '';
-          hintEl.style.removeProperty('display'); // override the !important none
           hintEl.style.display = 'flex';
         } else {
           hintEl.style.display = 'none';
