@@ -517,16 +517,16 @@ window.addEventListener('DOMContentLoaded', function () {
 function searchStudent() {
   const idNumber = document.getElementById('searchIdNumber').value.trim();
   const errorEl  = document.getElementById('searchError');
- 
+
   if (!idNumber) {
     errorEl.textContent = 'Please enter an ID number.';
     errorEl.style.display = '';
     return;
   }
- 
+
   errorEl.style.display = 'none';
   const token = localStorage.getItem('ccs_admin_token');
- 
+
   fetch('/api/admin/search-student?idNumber=' + encodeURIComponent(idNumber), {
     headers: { 'Authorization': 'Bearer ' + token },
   })
@@ -535,40 +535,30 @@ function searchStudent() {
       if (result.success) {
         const s   = result.student;
         const res = result.reservation; // may be null
- 
+
         if (s.sessions <= 0) {
           errorEl.textContent = 'This student has no remaining sessions and cannot sit in.';
           errorEl.style.display = '';
           document.getElementById('sitInCard').style.display = 'none';
           return;
         }
- 
+
         document.getElementById('sitIdNumber').value  = s.idNumber;
         document.getElementById('sitLastName').value  = s.lastName;
         document.getElementById('sitFirstName').value = s.firstName;
         document.getElementById('sitSessions').value  = s.sessions;
-        document.getElementById('sitPurpose').value   = '';
-        document.getElementById('sitLab').value       = '';
-        document.getElementById('sitPcNumber').value  = '';
         document.getElementById('sitInError').style.display = 'none';
         document.getElementById('sitInCard').style.display  = '';
- 
+
         // ── reservation hint ──
         const hintEl     = document.getElementById('sitResHint');
         const hintTextEl = document.getElementById('sitResHintText');
- 
-        if (res) {
-          const purposeSelect = document.getElementById('sitPurpose');
-          const labSelect     = document.getElementById('sitLab');
-          const pcInput       = document.getElementById('sitPcNumber');
 
-          for (const opt of purposeSelect.options) {
-            if (opt.value === res.purpose) { opt.selected = true; break; }
-          }
-          for (const opt of labSelect.options) {
-            if (opt.value === res.lab) { opt.selected = true; break; }
-          }
-          if (res.pc_number) pcInput.value = res.pc_number;
+        if (res) {
+          // Auto-fill from reservation — don't reset first
+          document.getElementById('sitPurpose').value  = res.purpose;
+          document.getElementById('sitLab').value      = res.lab;
+          document.getElementById('sitPcNumber').value = res.pc_number || '';
 
           hintTextEl.textContent =
             `✅ Auto-filled from approved reservation — Lab ${res.lab}, ${res.purpose}` +
@@ -576,6 +566,10 @@ function searchStudent() {
             ` at ${res.time_in}.`;
           hintEl.style.display = 'flex';
         } else {
+          // No reservation — reset the fields
+          document.getElementById('sitPurpose').value  = '';
+          document.getElementById('sitLab').value      = '';
+          document.getElementById('sitPcNumber').value = '';
           hintEl.style.display = 'none';
         }
       } else {
