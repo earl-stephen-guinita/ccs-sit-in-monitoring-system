@@ -8,7 +8,7 @@ const cors     = require('cors');
 const path     = require('path');
 
 const app    = express();
-const db     = new Database('database.db');
+const db = new Database(process.env.DB_PATH || 'database.db');
 const SECRET = process.env.JWT_SECRET;
 if (!SECRET) {
   console.error('FATAL: JWT_SECRET is not set in .env');
