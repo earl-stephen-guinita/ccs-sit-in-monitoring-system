@@ -877,42 +877,154 @@ app.get('/api/lab-pcs', authMiddleware, async (req, res) => {
   try {
     const { lab, date, timeIn } = req.query;
     if (!lab || !date || !timeIn) return res.json({ success: false, message: 'Missing parameters.' });
+ 
     const pcs = await all('SELECT * FROM lab_pcs WHERE lab = ? ORDER BY pc_number ASC', [lab]);
+ 
     const reservedRows = await all(
-      `SELECT pc_number FROM reservations WHERE lab = ? AND date = ? AND time_in = ? AND status IN ('pending', 'approved')`,
+      `SELECT pc_number FROM reservations
+       WHERE lab = ? AND date = ? AND time_in = ? AND status IN ('pending', 'approved')`,
       [lab, date, timeIn]
     );
     const reservedPCs = reservedRows.map(r => r.pc_number);
+ 
     const result = pcs.map(pc => ({
       ...pc,
-      effectiveStatus: pc.status === 'maintenance' ? 'maintenance'
+      effectiveStatus:
+        pc.status === 'maintenance' ? 'maintenance'
         : reservedPCs.includes(pc.pc_number) ? 'reserved'
         : 'available'
     }));
+ 
     res.json({ success: true, pcs: result });
   } catch (e) {
     res.json({ success: false, pcs: [] });
   }
 });
-
+ 
+/**
+ * GET /api/admin/lab-pcs
+ * Admin: get ALL PCs for ALL labs grouped, with counts per lab.
+ */
+app.get('/api/admin/lab-pcs', adminMiddleware, async (req, res) => {
+  try {
+    const rows = await all('SELECT * FROM lab_pcs ORDER BY lab ASC, pc_number ASC');
+ 
+    // Group by lab
+    const grouped = {};
+    for (const lab of ['524', '526', '528', '530', '542', '544']) {
+      grouped[lab] = { pcs: [], total: 0, available: 0, maintenance: 0 };
+    }
+ 
+    for (const row of rows) {
+      if (!grouped[row.lab]) {
+        grouped[row.lab] = { pcs: [], total: 0, available: 0, maintenance: 0 };
+      }
+      grouped[row.lab].pcs.push(row);
+      grouped[row.lab].total++;
+      if (row.status === 'maintenance') grouped[row.lab].maintenance++;
+      else grouped[row.lab].available++;
+    }
+ 
+    res.json({ success: true, grouped });
+  } catch (e) {
+    res.json({ success: false, grouped: {} });
+  }
+});
+ 
+/**
+ * GET /api/admin/lab-pcs/:lab
+ * Admin: get PCs for a single lab (kept for backwards compat).
+ */
 app.get('/api/admin/lab-pcs/:lab', adminMiddleware, async (req, res) => {
   try {
-    const pcs = await all('SELECT * FROM lab_pcs WHERE lab = ? ORDER BY pc_number ASC', [req.params.lab]);
+    const pcs = await all(
+      'SELECT * FROM lab_pcs WHERE lab = ? ORDER BY pc_number ASC',
+      [req.params.lab]
+    );
     res.json({ success: true, pcs });
   } catch (e) {
     res.json({ success: false, pcs: [] });
   }
 });
-
+ 
+/**
+ * PUT /api/admin/lab-pcs/:lab/:pcNumber
+ * Admin: toggle a PC between 'available' and 'maintenance'.
+ */
 app.put('/api/admin/lab-pcs/:lab/:pcNumber', adminMiddleware, async (req, res) => {
   try {
     const { status } = req.body;
-    if (!['available', 'maintenance'].includes(status))
+    if (!['available', 'maintenance'].includes(status)) {
+      return res.json({ success: false, message: 'Invalid status. Use "available" or "maintenance".' });
+    }
+ 
+    const { lab, pcNumber } = req.params;
+ 
+    // If going into maintenance, cancel any pending reservations for this PC
+    if (status === 'maintenance') {
+      const affectedRes = await all(
+        `SELECT * FROM reservations
+         WHERE lab = ? AND pc_number = ? AND status = 'pending'`,
+        [lab, pcNumber]
+      );
+ 
+      for (const r of affectedRes) {
+        await run('UPDATE reservations SET status = ? WHERE id = ?', ['rejected', r.id]);
+        await createNotification(
+          r.id_number,
+          'reservation_rejected',
+          `🛠 Reservation Cancelled — PC Under Maintenance`,
+          `Your reservation for Lab ${lab}, PC ${pcNumber} on ${r.date} was cancelled because that PC is now under maintenance.`
+        );
+      }
+    }
+ 
+    await run(
+      'UPDATE lab_pcs SET status = ? WHERE lab = ? AND pc_number = ?',
+      [status, lab, pcNumber]
+    );
+ 
+    res.json({ success: true, lab, pcNumber: parseInt(pcNumber), status });
+  } catch (e) {
+    console.error(e);
+    res.json({ success: false, message: 'Failed to update PC status.' });
+  }
+});
+ 
+/**
+ * PUT /api/admin/lab-pcs/:lab/bulk
+ * Admin: set status for ALL PCs in a lab at once.
+ */
+app.put('/api/admin/lab-pcs/:lab/bulk', adminMiddleware, async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['available', 'maintenance'].includes(status)) {
       return res.json({ success: false, message: 'Invalid status.' });
-    await run('UPDATE lab_pcs SET status = ? WHERE lab = ? AND pc_number = ?', [status, req.params.lab, req.params.pcNumber]);
+    }
+ 
+    const { lab } = req.params;
+ 
+    if (status === 'maintenance') {
+      // Cancel all pending reservations for this lab
+      const affectedRes = await all(
+        `SELECT * FROM reservations WHERE lab = ? AND status = 'pending'`,
+        [lab]
+      );
+      for (const r of affectedRes) {
+        await run('UPDATE reservations SET status = ? WHERE id = ?', ['rejected', r.id]);
+        await createNotification(
+          r.id_number,
+          'reservation_rejected',
+          `🛠 Reservation Cancelled — Lab ${lab} Under Maintenance`,
+          `Your reservation for Lab ${lab} on ${r.date} was cancelled because the entire lab is now under maintenance.`
+        );
+      }
+    }
+ 
+    await run('UPDATE lab_pcs SET status = ? WHERE lab = ?', [status, lab]);
     res.json({ success: true });
   } catch (e) {
-    res.json({ success: false });
+    res.json({ success: false, message: 'Bulk update failed.' });
   }
 });
 

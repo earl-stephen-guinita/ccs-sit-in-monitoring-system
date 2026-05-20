@@ -2736,58 +2736,257 @@ const LAB_ICONS = {
   '544': 'bi-server',
 };
 
+/* =====================================================
+   Lab Software + PC Maintenance Management
+   ===================================================== */
+
 /* ══════════════════════════════════════════════════════
-   LAB SOFTWARE — ADMIN MANAGEMENT
+   ADMIN SOFTWARE + PC MANAGEMENT PAGE
 ══════════════════════════════════════════════════════ */
 
-let adminSoftwareData = {};
+const SW_LABS = ['524', '526', '528', '530', '542', '544'];
 
+// Active lab tab in the software page
+let _swActiveLab = SW_LABS[0];
+
+// PC data cache keyed by lab
+let _pcData = {};
+// Software data cache
+let _swData = {};
+
+/**
+ * Main entry-point: loads both software and PC data,
+ * then renders the current lab tab.
+ */
 function loadAdminSoftware() {
   const token = localStorage.getItem('ccs_admin_token');
-  fetch('/api/admin/lab-software', {
-    headers: { 'Authorization': 'Bearer ' + token }
-  })
-    .then(res => res.json())
-    .then(result => {
-      if (!result.success) return;
-      adminSoftwareData = result.software;
-      renderAdminSoftwareTable(result.software);
+  Promise.all([
+    fetch('/api/admin/lab-software', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json()),
+    fetch('/api/admin/lab-pcs',      { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json()),
+  ])
+    .then(([swResult, pcResult]) => {
+      _swData = swResult.success  ? swResult.software : {};
+      _pcData = pcResult.success  ? pcResult.grouped  : {};
+      adminSoftwareData = _swData; // keep global in sync for exports
+      renderAdminSoftwarePage();
     })
     .catch(() => {});
 }
 
-function renderAdminSoftwareTable(software) {
+/**
+ * Renders the entire software page: lab tab pills + content area.
+ */
+function renderAdminSoftwarePage() {
   const wrap = document.getElementById('swAdminTableWrap');
   if (!wrap) return;
-  const labs = ['524', '526', '528', '530', '542', '544'];
-  let html = '<div class="sw-admin-grid">';
-  for (const lab of labs) {
-    const entries = software[lab] || [];
-    html += `
-      <div class="sw-admin-lab-card">
-        <div class="sw-admin-lab-header">
-          <i class="bi bi-building me-2"></i>Laboratory ${lab}
-          <span class="sw-admin-count">${entries.length}</span>
-        </div>
-        <div class="sw-admin-entries">
-          ${entries.length === 0
-            ? '<p class="sw-admin-empty">No software listed.</p>'
-            : entries.map(e => `
-                <div class="sw-admin-entry">
-                  <span><i class="bi bi-check-circle-fill sw-entry-icon me-2"></i>${e.software}</span>
-                  <button class="btn-sw-delete" onclick="deleteSoftwareEntry(${e.id})" title="Remove">
-                    <i class="bi bi-x-lg"></i>
-                  </button>
-                </div>
-              `).join('')
-          }
+
+  // ── Tab pills ──
+  const tabsHtml = SW_LABS.map(lab => {
+    const info = _pcData[lab] || { total: 0, available: 0, maintenance: 0 };
+    const maintCount = info.maintenance || 0;
+    const maintBadge = maintCount > 0
+      ? `<span class="sw-maint-badge">${maintCount} 🛠</span>`
+      : '';
+    return `
+      <button class="sw-lab-tab ${lab === _swActiveLab ? 'active' : ''}"
+              onclick="switchSwLab('${lab}')">
+        <i class="bi bi-building me-1"></i>Lab ${lab}
+        ${maintBadge}
+      </button>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="sw-lab-tabs">${tabsHtml}</div>
+    <div id="swLabContent"></div>
+  `;
+
+  renderSwLabContent(_swActiveLab);
+}
+
+/**
+ * Switches the active lab tab.
+ */
+function switchSwLab(lab) {
+  _swActiveLab = lab;
+  renderAdminSoftwarePage();
+}
+
+/**
+ * Renders the content area for one lab:
+ *   - PC count summary bar
+ *   - PC grid with maintenance toggles
+ *   - Software list
+ */
+function renderSwLabContent(lab) {
+  const el = document.getElementById('swLabContent');
+  if (!el) return;
+
+  const info     = _pcData[lab] || { pcs: [], total: 50, available: 50, maintenance: 0 };
+  const software = (_swData[lab] || []);
+  const pcs      = info.pcs || [];
+
+  const pct = info.total > 0
+    ? Math.round(((info.available || 0) / info.total) * 100)
+    : 100;
+  const barColor = pct === 100 ? '#10b981' : pct >= 60 ? '#f5a623' : '#ef4444';
+
+  el.innerHTML = `
+    <!-- ── PC Section ── -->
+    <div class="sw-section-card">
+      <div class="sw-section-header">
+        <span><i class="bi bi-display me-2"></i>PC Status — Lab ${lab}</span>
+        <div class="sw-pc-summary-inline">
+          <span class="sw-pc-chip available"><i class="bi bi-check-circle-fill me-1"></i>${info.available || 0} Available</span>
+          <span class="sw-pc-chip maintenance"><i class="bi bi-tools me-1"></i>${info.maintenance || 0} Maintenance</span>
+          <span class="sw-pc-chip total"><i class="bi bi-display me-1"></i>${info.total || 0} Total</span>
         </div>
       </div>
-    `;
-  }
-  html += '</div>';
-  wrap.innerHTML = html;
+
+      <!-- availability bar -->
+      <div class="sw-avail-bar-wrap">
+        <div class="sw-avail-bar-track">
+          <div class="sw-avail-bar-fill" style="width:${pct}%; background:${barColor};"></div>
+        </div>
+        <span class="sw-avail-pct">${pct}% available</span>
+      </div>
+
+      <!-- bulk actions -->
+      <div class="sw-bulk-actions">
+        <button class="btn-sw-bulk available" onclick="bulkSetLabStatus('${lab}', 'available')">
+          <i class="bi bi-check-all me-1"></i>Set All Available
+        </button>
+        <button class="btn-sw-bulk maintenance" onclick="bulkSetLabStatus('${lab}', 'maintenance')">
+          <i class="bi bi-tools me-1"></i>Set All Maintenance
+        </button>
+      </div>
+
+      <!-- PC grid -->
+      <div class="sw-pc-grid" id="swPcGrid-${lab}">
+        ${pcs.map(pc => _renderPcCell(lab, pc)).join('')}
+      </div>
+
+      <p class="sw-pc-grid-hint">
+        <i class="bi bi-info-circle me-1"></i>
+        Click a PC to toggle between <strong>Available</strong> and <strong>Under Maintenance</strong>.
+        Pending reservations for maintenance PCs are automatically cancelled and students notified.
+      </p>
+    </div>
+
+    <!-- ── Software Section ── -->
+    <div class="sw-section-card mt-3">
+      <div class="sw-section-header">
+        <span><i class="bi bi-app me-2"></i>Installed Software — Lab ${lab}</span>
+        <span class="sw-admin-count">${software.length}</span>
+      </div>
+      <div class="sw-admin-entries-inline" id="swEntriesInline-${lab}">
+        ${software.length === 0
+          ? '<p class="sw-admin-empty">No software listed for this lab.</p>'
+          : software.map(e => `
+              <div class="sw-entry-pill">
+                <i class="bi bi-check-circle-fill sw-entry-icon me-1"></i>
+                ${e.software}
+                <button class="btn-sw-delete-sm" onclick="deleteSoftwareEntry(${e.id})" title="Remove">
+                  <i class="bi bi-x"></i>
+                </button>
+              </div>`).join('')
+        }
+      </div>
+    </div>
+  `;
 }
+
+/**
+ * Renders one PC cell button.
+ */
+function _renderPcCell(lab, pc) {
+  const isMaint = pc.status === 'maintenance';
+  return `
+    <button class="sw-pc-cell ${isMaint ? 'maintenance' : 'available'}"
+            id="sw-pc-${lab}-${pc.pc_number}"
+            onclick="togglePcStatus('${lab}', ${pc.pc_number}, '${pc.status}')"
+            title="PC ${pc.pc_number} — ${isMaint ? 'Under Maintenance (click to restore)' : 'Available (click to set maintenance)'}">
+      <i class="bi bi-display"></i>
+      <span>${pc.pc_number}</span>
+      ${isMaint ? '<i class="bi bi-tools sw-pc-maint-icon"></i>' : ''}
+    </button>`;
+}
+
+/**
+ * Toggle a single PC's status.
+ */
+function togglePcStatus(lab, pcNumber, currentStatus) {
+  const newStatus = currentStatus === 'maintenance' ? 'available' : 'maintenance';
+  const token = localStorage.getItem('ccs_admin_token');
+
+  // optimistic UI update
+  const cell = document.getElementById(`sw-pc-${lab}-${pcNumber}`);
+  if (cell) {
+    cell.disabled = true;
+    cell.style.opacity = '0.5';
+  }
+
+  fetch(`/api/admin/lab-pcs/${lab}/${pcNumber}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ status: newStatus }),
+  })
+    .then(r => r.json())
+    .then(result => {
+      if (result.success) {
+        // update local cache
+        const info = _pcData[lab];
+        if (info) {
+          const pcObj = info.pcs.find(p => p.pc_number === pcNumber);
+          if (pcObj) {
+            if (pcObj.status === 'maintenance') { info.maintenance--; info.available++; }
+            else                                { info.available--;   info.maintenance++; }
+            pcObj.status = newStatus;
+          }
+        }
+        renderAdminSoftwarePage(); // full re-render to update tabs + content
+      } else {
+        if (cell) { cell.disabled = false; cell.style.opacity = ''; }
+        alert(result.message || 'Failed to update PC status.');
+      }
+    })
+    .catch(() => {
+      if (cell) { cell.disabled = false; cell.style.opacity = ''; }
+      alert('Could not reach the server.');
+    });
+}
+
+/**
+ * Set all PCs in a lab to a given status.
+ */
+function bulkSetLabStatus(lab, status) {
+  const label = status === 'maintenance' ? 'Under Maintenance' : 'Available';
+  const msg = status === 'maintenance'
+    ? `Set ALL PCs in Lab ${lab} to "Under Maintenance"?\n\nAny pending reservations for this lab will be cancelled and students notified.`
+    : `Restore ALL PCs in Lab ${lab} to "Available"?`;
+
+  if (!confirm(msg)) return;
+
+  const token = localStorage.getItem('ccs_admin_token');
+
+  fetch(`/api/admin/lab-pcs/${lab}/bulk`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ status }),
+  })
+    .then(r => r.json())
+    .then(result => {
+      if (result.success) {
+        loadAdminSoftware(); // full reload
+      } else {
+        alert(result.message || 'Bulk update failed.');
+      }
+    })
+    .catch(() => alert('Could not reach the server.'));
+}
+
+/* ══════════════════════════════════════════════════════
+   SOFTWARE CRUD (unchanged from original)
+══════════════════════════════════════════════════════ */
 
 function addSoftwareEntry() {
   const lab      = document.getElementById('swAddLab').value;
@@ -2795,16 +2994,8 @@ function addSoftwareEntry() {
   const errEl    = document.getElementById('swAddError');
   errEl.style.display = 'none';
 
-  if (!lab) {
-    errEl.textContent = 'Please select a laboratory.';
-    errEl.style.display = '';
-    return;
-  }
-  if (!software) {
-    errEl.textContent = 'Please enter a software name.';
-    errEl.style.display = '';
-    return;
-  }
+  if (!lab)      { errEl.textContent = 'Please select a laboratory.'; errEl.style.display = ''; return; }
+  if (!software) { errEl.textContent = 'Please enter a software name.'; errEl.style.display = ''; return; }
 
   const token = localStorage.getItem('ccs_admin_token');
   fetch('/api/admin/lab-software', {
@@ -2812,21 +3003,20 @@ function addSoftwareEntry() {
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
     body: JSON.stringify({ lab, software }),
   })
-    .then(res => res.json())
+    .then(r => r.json())
     .then(result => {
       if (result.success) {
         document.getElementById('swAddName').value = '';
         document.getElementById('swAddLab').value  = '';
+        // also switch active tab to the lab that was just added
+        _swActiveLab = lab;
         loadAdminSoftware();
       } else {
         errEl.textContent   = result.message || 'Failed to add software.';
         errEl.style.display = '';
       }
     })
-    .catch(() => {
-      errEl.textContent   = 'Could not reach the server.';
-      errEl.style.display = '';
-    });
+    .catch(() => { errEl.textContent = 'Could not reach the server.'; errEl.style.display = ''; });
 }
 
 function deleteSoftwareEntry(id) {
@@ -2836,67 +3026,53 @@ function deleteSoftwareEntry(id) {
     method: 'DELETE',
     headers: { 'Authorization': 'Bearer ' + token },
   })
-    .then(res => res.json())
-    .then(result => {
-      if (result.success) loadAdminSoftware();
-      else alert(result.message || 'Failed to delete.');
-    })
+    .then(r => r.json())
+    .then(result => { if (result.success) loadAdminSoftware(); else alert(result.message || 'Failed.'); })
     .catch(() => alert('Could not reach the server.'));
 }
 
+/* ══════════════════════════════════════════════════════
+   EXPORT / IMPORT  (unchanged logic, uses _swData)
+══════════════════════════════════════════════════════ */
+
 function exportAdminSoftwareCSV() {
   const token = localStorage.getItem('ccs_admin_token');
-  fetch('/api/admin/lab-software/export-csv', {
-    headers: { 'Authorization': 'Bearer ' + token }
-  })
-    .then(res => res.text())
+  fetch('/api/admin/lab-software/export-csv', { headers: { Authorization: 'Bearer ' + token } })
+    .then(r => r.text())
     .then(csv => {
       const blob = new Blob([csv], { type: 'text/csv' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
-      a.href     = url;
-      a.download = 'lab-software.csv';
-      a.click();
+      a.href = url; a.download = 'lab-software.csv'; a.click();
       URL.revokeObjectURL(url);
     })
     .catch(() => alert('Could not export CSV.'));
 }
 
 function exportAdminSoftwareExcel() {
-  const software = adminSoftwareData;
-  const labs = ['524', '526', '528', '530', '542', '544'];
+  const software = _swData;
   let html = '<table><thead><tr><th>Laboratory</th><th>Software</th></tr></thead><tbody>';
-  for (const lab of labs) {
-    const entries = software[lab] || [];
-    for (const e of entries) {
+  for (const lab of SW_LABS) {
+    for (const e of (software[lab] || [])) {
       html += `<tr><td>Lab ${lab}</td><td>${e.software}</td></tr>`;
     }
   }
   html += '</tbody></table>';
-  const blob = new Blob(
-    [`<html><head><meta charset="UTF-8"></head><body>${html}</body></html>`],
-    { type: 'application/vnd.ms-excel' }
-  );
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement('a');
-  a.href     = url;
-  a.download = 'lab-software.xls';
-  a.click();
+  const blob = new Blob([`<html><head><meta charset="UTF-8"></head><body>${html}</body></html>`], { type: 'application/vnd.ms-excel' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a'); a.href = url; a.download = 'lab-software.xls'; a.click();
   URL.revokeObjectURL(url);
 }
 
 function exportAdminSoftwarePDF() {
-  const software = adminSoftwareData;
-  const labs = ['524', '526', '528', '530', '542', '544'];
+  const software = _swData;
   let tableRows = '';
-  for (const lab of labs) {
+  for (const lab of SW_LABS) {
     const entries = software[lab] || [];
     if (entries.length === 0) {
       tableRows += `<tr><td>Lab ${lab}</td><td><em>No software listed</em></td></tr>`;
     } else {
-      for (const e of entries) {
-        tableRows += `<tr><td>Lab ${lab}</td><td>${e.software}</td></tr>`;
-      }
+      for (const e of entries) tableRows += `<tr><td>Lab ${lab}</td><td>${e.software}</td></tr>`;
     }
   }
   const win = window.open('', '_blank');
@@ -2905,18 +3081,18 @@ function exportAdminSoftwarePDF() {
 <head>
   <title>Lab Software — CCS</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', sans-serif; padding: 1.5rem 2rem; color: #1a1a2e; font-size: 12px; }
-    .print-header { text-align: center; margin-bottom: 1.2rem; border-bottom: 2px solid #2d0f5e; padding-bottom: 0.8rem; }
-    .print-header h2 { font-size: 1.1rem; color: #2d0f5e; font-weight: 800; }
-    .print-header p  { font-size: 0.78rem; color: #666; margin-top: 0.2rem; }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    thead tr { background: #2d0f5e; color: #fff; }
-    th { padding: 0.5rem 0.6rem; text-align: left; font-weight: 700; }
-    td { padding: 0.42rem 0.6rem; border-bottom: 1px solid #e8d8ff; vertical-align: top; }
-    tbody tr:nth-child(even) { background: #f8f4ff; }
-    .print-footer { margin-top: 0.85rem; font-size: 0.72rem; color: #aaa; text-align: right; }
-    @media print { body { padding: 0.5rem 1rem; } }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',sans-serif;padding:1.5rem 2rem;color:#1a1a2e;font-size:12px}
+    .print-header{text-align:center;margin-bottom:1.2rem;border-bottom:2px solid #2d0f5e;padding-bottom:.8rem}
+    .print-header h2{font-size:1.1rem;color:#2d0f5e;font-weight:800}
+    .print-header p{font-size:.78rem;color:#666;margin-top:.2rem}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    thead tr{background:#2d0f5e;color:#fff}
+    th{padding:.5rem .6rem;text-align:left;font-weight:700}
+    td{padding:.42rem .6rem;border-bottom:1px solid #e8d8ff;vertical-align:top}
+    tbody tr:nth-child(even){background:#f8f4ff}
+    .print-footer{margin-top:.85rem;font-size:.72rem;color:#aaa;text-align:right}
+    @media print{body{padding:.5rem 1rem}}
   </style>
 </head>
 <body>
@@ -2928,8 +3104,8 @@ function exportAdminSoftwarePDF() {
     <thead><tr><th>Laboratory</th><th>Software</th></tr></thead>
     <tbody>${tableRows}</tbody>
   </table>
-  <div class="print-footer">CCS Sit-In Monitoring System &mdash; ${new Date().toLocaleDateString()}</div>
-  <script>window.onload = function() { window.print(); };<\/script>
+  <div class="print-footer">CCS Sit-In Monitoring System — ${new Date().toLocaleDateString()}</div>
+  <script>window.onload=function(){window.print();}<\/script>
 </body>
 </html>`);
   win.document.close();
@@ -2938,75 +3114,44 @@ function exportAdminSoftwarePDF() {
 function importSoftwareFile(event) {
   const file = event.target.files[0];
   if (!file) return;
-
   const reader = new FileReader();
   reader.onload = function (e) {
-    const text = e.target.result;
+    const text  = e.target.result;
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-
-    // detect header
     const startIdx = lines[0].toLowerCase().includes('lab') ? 1 : 0;
     const rows = [];
-
     for (let i = startIdx; i < lines.length; i++) {
-      // simple CSV parse (handles quoted fields)
-      const cols = parseCSVLine(lines[i]);
+      const cols     = parseCSVLine(lines[i]);
       if (cols.length < 2) continue;
       const lab      = cols[0].trim().replace(/^Lab\s*/i, '');
       const software = cols[1].trim();
       if (lab && software) rows.push({ lab, software });
     }
-
-    if (rows.length === 0) {
-      alert('No valid rows found in CSV. Check the format and try again.');
-      event.target.value = '';
-      return;
-    }
-
-    if (!confirm(`Import ${rows.length} software entries? This will REPLACE all existing software data.`)) {
-      event.target.value = '';
-      return;
-    }
-
+    if (rows.length === 0) { alert('No valid rows found in CSV.'); event.target.value = ''; return; }
+    if (!confirm(`Import ${rows.length} software entries? This will REPLACE all existing software data.`)) { event.target.value = ''; return; }
     const token = localStorage.getItem('ccs_admin_token');
     fetch('/api/admin/lab-software/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({ rows, mode: 'replace' }),
     })
-      .then(res => res.json())
+      .then(r => r.json())
       .then(result => {
         event.target.value = '';
-        if (result.success) {
-          alert(`✓ Imported ${rows.length} software entries successfully.`);
-          loadAdminSoftware(); // re-fetch from server so the table reflects DB state
-        } else {
-          alert(result.message || 'Import failed.');
-        }
+        if (result.success) { alert(`✓ Imported ${rows.length} entries.`); loadAdminSoftware(); }
+        else alert(result.message || 'Import failed.');
       })
-      .catch(() => {
-        event.target.value = '';
-        alert('Could not reach the server.');
-      });
+      .catch(() => { event.target.value = ''; alert('Could not reach the server.'); });
   };
   reader.readAsText(file);
 }
 
-/* ── simple CSV line parser (handles quoted fields) ── */
 function parseCSVLine(line) {
-  const result = [];
-  let current  = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
+  const result = []; let current = ''; let inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"')            { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+    else                       { current += ch; }
   }
   result.push(current);
   return result;

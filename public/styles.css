@@ -3132,3 +3132,287 @@ html, body {
   .lb-podium-name  { max-width: 100px; font-size: 0.75rem; }
   .lb-legend       { gap: 0.75rem; }
 }
+
+/* ── Lab tab pills ── */
+.sw-lab-tabs {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 1rem 1.5rem 0;
+}
+ 
+.sw-lab-tab {
+  background: #f0e6ff;
+  color: #4a1d7e;
+  border: 1px solid #d4b5ff;
+  border-radius: 20px;
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.12s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  position: relative;
+}
+ 
+.sw-lab-tab:hover {
+  background: #e0ccff;
+  transform: translateY(-1px);
+}
+ 
+.sw-lab-tab.active {
+  background: linear-gradient(135deg, #4a1d7e, #7c3aed);
+  color: #fff;
+  border-color: #4a1d7e;
+  box-shadow: 0 3px 10px rgba(74,29,126,0.3);
+}
+ 
+.sw-maint-badge {
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.65rem;
+  font-weight: 800;
+  border-radius: 10px;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid #fcd34d;
+  margin-left: 0.2rem;
+}
+ 
+/* ── Section cards ── */
+.sw-section-card {
+  margin: 1rem 1.5rem 0;
+  border: 1px solid #e8d8ff;
+  border-radius: 14px;
+  overflow: hidden;
+}
+ 
+.sw-section-card.mt-3 { margin-top: 1rem; }
+ 
+.sw-section-header {
+  background: linear-gradient(135deg, #f0e6ff, #e8d8ff);
+  color: #2d0f5e;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.65rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+ 
+/* ── PC summary chips ── */
+.sw-pc-summary-inline {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+ 
+.sw-pc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.18rem 0.6rem;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+ 
+.sw-pc-chip.available   { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+.sw-pc-chip.maintenance { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.sw-pc-chip.total       { background: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc; }
+ 
+/* ── Availability bar ── */
+.sw-avail-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem 0;
+}
+ 
+.sw-avail-bar-track {
+  flex: 1;
+  height: 7px;
+  background: #f0e6ff;
+  border-radius: 4px;
+  overflow: hidden;
+}
+ 
+.sw-avail-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+ 
+.sw-avail-pct {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #4a1d7e;
+  white-space: nowrap;
+  min-width: 80px;
+  text-align: right;
+}
+ 
+/* ── Bulk action buttons ── */
+.sw-bulk-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem 0;
+  flex-wrap: wrap;
+}
+ 
+.btn-sw-bulk {
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+ 
+.btn-sw-bulk:hover { transform: translateY(-1px); }
+ 
+.btn-sw-bulk.available {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+.btn-sw-bulk.available:hover { box-shadow: 0 3px 8px rgba(16,185,129,0.25); }
+ 
+.btn-sw-bulk.maintenance {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.btn-sw-bulk.maintenance:hover { box-shadow: 0 3px 8px rgba(245,158,11,0.25); }
+ 
+/* ── PC grid ── */
+.sw-pc-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 5px;
+  padding: 0.85rem 1rem;
+}
+ 
+@media (max-width: 900px) { .sw-pc-grid { grid-template-columns: repeat(7, 1fr); } }
+@media (max-width: 640px) { .sw-pc-grid { grid-template-columns: repeat(5, 1fr); } }
+ 
+.sw-pc-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0.45rem 0.2rem 0.3rem;
+  border-radius: 8px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  border: 1.5px solid transparent;
+  transition: transform 0.12s, box-shadow 0.12s, opacity 0.2s;
+}
+ 
+.sw-pc-cell i:first-child { font-size: 1rem; }
+ 
+.sw-pc-cell.available {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #065f46;
+}
+.sw-pc-cell.available:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(16,185,129,0.3);
+  background: #a7f3d0;
+}
+ 
+.sw-pc-cell.maintenance {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+.sw-pc-cell.maintenance:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(245,158,11,0.3);
+  background: #fde68a;
+}
+ 
+.sw-pc-cell:active { transform: scale(0.93); }
+ 
+/* wrench overlay icon on maintenance cells */
+.sw-pc-maint-icon {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 0.5rem !important;
+  color: #b45309;
+}
+ 
+/* hint text */
+.sw-pc-grid-hint {
+  font-size: 0.75rem;
+  color: #9b72cf;
+  padding: 0 1rem 0.85rem;
+  line-height: 1.5;
+}
+ 
+/* ── Software entries (inline pill style) ── */
+.sw-admin-entries-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.85rem 1rem 1rem;
+  min-height: 52px;
+}
+ 
+.sw-entry-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: #faf7ff;
+  border: 1px solid #d4b5ff;
+  color: #1a1a2e;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 0.28rem 0.55rem 0.28rem 0.7rem;
+  transition: background 0.15s;
+}
+ 
+.sw-entry-pill:hover { background: #f0e6ff; }
+ 
+.sw-entry-icon { color: #7c3aed; font-size: 0.65rem; }
+ 
+.btn-sw-delete-sm {
+  background: none;
+  border: none;
+  color: #bbb;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0 0.1rem;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.btn-sw-delete-sm:hover { color: #dc3545; }
+ 
+/* ── student reservation page: maintenance cell tooltip overlay ── */
+.pc-cell.maintenance::after {
+  content: '🛠';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 0.55rem;
+  line-height: 1;
+}
+ 
+/* last section card bottom padding */
+#swAdminTableWrap > :last-child { margin-bottom: 1.25rem; }
+ 
